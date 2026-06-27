@@ -1,0 +1,19 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*~
+_*
+*.swp
+*.swo
+.vscode/
+.idea/
+*.iml
+.TAGS
+
+# C build artifacts (notes experiments, scratch builds)
+*.o
+*.d
+*.asm
+*.sym
+a.out
+core

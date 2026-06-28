@@ -60,6 +60,26 @@ main(int argc, char *argv[])
 void
 memdump(char *fmt, char *data)
 {
-  // Your code here.
-
+  for (;*fmt != '\0';fmt++){
+    if(*fmt == 'i'){
+      printf("%d\n", *(int *)data);
+      data = (char *)((int *)data + 1);
+    } else if(*fmt == 'p') {
+      printf("%llx\n", *(long long int *)data);
+      data = (char *)((long long int *)data + 1);
+    } else if(*fmt == 'h') {
+      printf("%d\n", *(short *)data);
+      data = (char *)((short *)data + 1);
+    } else if(*fmt == 'c') {
+      printf("%c\n", *(char *)data);
+      data = (char *)((char *)data + 1);
+    } else if(*fmt == 's') {
+      printf("%s\n", *(char **)data);
+      data = (char *)((char **)data + 1);
+    } else if(*fmt == 'S') {
+      printf("%s\n", data);
+    } else {
+      fprintf(2, "memdump: unknown format character '%c'\n", *fmt);
+    }
+  }
 }

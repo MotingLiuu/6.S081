@@ -42,15 +42,24 @@ ls(char *path)
     close(fd);
     return;
   }
+  /*
+   * st contains information about the file
+   * fd is the file descriptor
+   */
 
   switch(st.type){
   case T_DEVICE:
+
+  // if the file is T_FILE, print the file name, type, inode number, and size
   case T_FILE:
     printf("%s %d %d %d\n", fmtname(path), st.type, st.ino, (int) st.size);
     break;
 
+// if the file is T_DIR
   case T_DIR:
     if(strlen(path) + 1 + DIRSIZ + 1 > sizeof buf){
+      // the 1st 1 represent the '/' after the path?
+      // the 2nd 1 represent the '\0' at the end of the path?
       printf("ls: path too long\n");
       break;
     }

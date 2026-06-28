@@ -10,6 +10,8 @@ _*
 *.iml
 .TAGS
 
+*.bak
+
 # C build artifacts (notes experiments, scratch builds)
 *.o
 *.d
@@ -17,3 +19,4 @@ _*
 *.sym
 a.out
 core
+

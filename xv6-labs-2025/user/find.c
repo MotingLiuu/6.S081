@@ -37,41 +37,38 @@ int find(char *path, char *name) {
       p = buf + strlen(buf);
       *p++ = '/';
       while (read(fd, &de, sizeof(de)) == sizeof(de)) {
-        if (de.inum == 0)
+        if (de.inum == 0) // this means that the file is deleted
           continue;
         memmove(p, de.name, DIRSIZ);
         p[DIRSIZ] = 0;
 
-        /*printf("DEBUG: finding %s in %s, current name %s\n", name, path, buf); */
-
-        if (strcmp(p, ".") == 0)
-          continue;
-        if (strcmp(p, "..") == 0)
-          continue;
         if (stat(buf, &st) < 0) {
           fprintf(2, "find: cannot stat %s\n", buf);
-          continue;
+          return -1;
         }
-        if (st.type == T_FILE) {
 
-          /*printf("DEBUG: Comparing %s and %s\n", p, name); */
+        /*printf("DEBUG: finding %s in %s, current file is %s file's type is %d\n", name, path, p, st.type);*/
 
-          if (strcmp(p, name) == 0) {
-            printf("%s\n", buf);
-            continue;
-          }
-        } else if (st.type == T_DIR) {
-
-          /*printf("DEBUG: Recursing into %s\n", buf); */
-
-          if (find(buf, name) < 0) {
-            return -1;
-          }
-        } else {
-          continue;
+        switch(st.type) {
+          case T_DIR:
+            if (strcmp(p, ".") == 0 || strcmp(p, "..") == 0) {
+              ;
+            } else {
+              if (find(buf, name) < 0)
+                return -1;
+            }
+            break;
+          case T_FILE:
+            if (strcmp(p, name) == 0) {
+              printf("%s\n", buf);
+            } 
+            break;
+          case T_DEVICE:
+            ;
+            break;
         }
       }
-    }
+  }
   close(fd);
   return 0;
 }

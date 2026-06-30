@@ -10,7 +10,7 @@ _*
 *.iml
 .TAGS
 
-*.bak
+*.bk
 *.img
 
 # C build artifacts (notes experiments, scratch builds)

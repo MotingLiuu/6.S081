@@ -17,6 +17,11 @@ struct cmd {
   int type;
 };
 
+/*
+ * does cmd only contain one int?
+ * yes, it just serves as a gneric header that every concrete command struct starts with.
+ */
+
 struct execcmd {
   int type;
   char *argv[MAXARGS];
@@ -31,6 +36,15 @@ struct redircmd {
   int mode;
   int fd;
 };
+
+/*
+ * what is *file and *efile?
+ * file points at the first char of the redirection filename, efile points one past the last char
+ *
+ *
+ * what is mode?
+ * the flags passed to open()
+ */
 
 struct pipecmd {
   int type;
@@ -49,10 +63,34 @@ struct backcmd {
   struct cmd *cmd;
 };
 
+/*
+ * what is backcmd? 
+ * A command run in the background.
+ * parseline warps the left hand command in a backcmd when it see &. In run cmd the parent just forks does not call wait, it returns immediately to the prompt while the child runs.
+ */
+
 int fork1(void);  // Fork but panics on failure.
+
+/*
+ * what is fork1? what is the difference between fork1 and fork?
+ * just terminate the parents when fork false
+ */
+
 void panic(char*);
+
+/*
+ * what is panic?
+ * just fprintf(2, char*) and exit(1)
+ */
+
+
 struct cmd *parsecmd(char*);
 void runcmd(struct cmd*) __attribute__((noreturn));
+
+/*
+ * what is __attribute__((noreturn))?
+ * just let compiler omit the code that would set up a return and suppresses the warning "control reaches end of non-void function"
+ */
 
 // Execute cmd.  Never returns.
 void
@@ -77,6 +115,12 @@ runcmd(struct cmd *cmd)
     if(ecmd->argv[0] == 0)
       exit(1);
     exec(ecmd->argv[0], ecmd->argv);
+
+    /*
+     * execcmd contains argv and eargv, what is eargv? why use ecmd->argv[0]
+     * argv[] holds NUL-terminated C strings, they are carved out of the original input buffer. nulterminate walks the parsed tree after parsing finishes and writes *ecmd->eargv[i] = 0 for every token.
+     */
+
     fprintf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
 
@@ -91,6 +135,11 @@ runcmd(struct cmd *cmd)
     break;
 
   case LIST:
+
+    /*
+     * fork a child process in the child process to run left cmd, then wait for the left cmd to finish, then parents run lcmd->right
+     */
+
     lcmd = (struct listcmd*)cmd;
     if(fork1() == 0)
       runcmd(lcmd->left);
@@ -102,11 +151,27 @@ runcmd(struct cmd *cmd)
     pcmd = (struct pipecmd*)cmd;
     if(pipe(p) < 0)
       panic("pipe");
+
+    /*
+     * p is an array of two integers elements. each element if a fd.
+     * pipe(p) creates a pipe, put two fds in p.
+     */
+
     if(fork1() == 0){
-      close(1);
-      dup(p[1]);
-      close(p[0]);
+
+      /*
+       * this fork a new child process, remain the fds same as parent process.
+       */
+
+      close(1); // close 1 and dup(p[1]) to fd 1. this replace the stdout with p[1].
+      dup(p[1]); 
+      close(p[0]); // just close p[0] and p[1], for we don't need them.
       close(p[1]);
+
+      /*
+       * if no data is available, a read on a pipe waits for either data to be written or for all file descriptors referring to the write end to be closed. in the latter case, read will return 0, just as if the end of a data file had been reached.
+       */
+      
       runcmd(pcmd->left);
     }
     if(fork1() == 0){
@@ -118,6 +183,11 @@ runcmd(struct cmd *cmd)
     }
     close(p[0]);
     close(p[1]);
+
+    /*
+     * this would close all fd pointing to write end of pipe, and let read from read end of file return 0
+     */
+
     wait(0);
     wait(0);
     break;
@@ -135,8 +205,20 @@ int
 getcmd(char *buf, int nbuf)
 {
   write(2, "$ ", 2);
+
+  /*
+   * what is write(2, "$ ", 2)? write 2 bytes to fd 2? why fd 2?
+   * what does it mean by doesn't get interleaved with the prompt?
+   */
+
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
+
+  /*
+   * what is gets(buf, nbuf)? what is buf? what is nbuf? gets nbuf bytes from stdin to buf?
+   * gets reads one line from stdin into buf, NUL-terminating it.
+   */
+
   if(buf[0] == 0) // EOF
     return -1;
   return 0;
@@ -150,6 +232,11 @@ main(void)
 
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
+
+    /*
+     * what is open("console", O_RDWR)? what is console? why fd >= 3?
+     */
+
     if(fd >= 3){
       close(fd);
       break;
@@ -195,17 +282,31 @@ fork1(void)
   return pid;
 }
 
+/*
+ * if child process is not created, just kill the parent process.
+ */
+
 //PAGEBREAK!
 // Constructors
 
 struct cmd*
 execcmd(void)
 {
-  struct execcmd *cmd;
+  struct execcmd *cmd; 
+
+  /*
+   * new a pointer pointing to an execcmd struct
+   */
 
   cmd = malloc(sizeof(*cmd));
+
+  /*
+   * let cmd point to a block of memory, and set all the bytes in the block to 0.
+   */
+
   memset(cmd, 0, sizeof(*cmd));
   cmd->type = EXEC;
+
   return (struct cmd*)cmd;
 }
 
@@ -268,20 +369,26 @@ backcmd(struct cmd *subcmd)
 char whitespace[] = " \t\r\n\v";
 char symbols[] = "<|>&;()";
 
+/*
+ * *ps is the current scan position. es: one past the last char of the input, used as the upper bound
+ * *q:out(optional) if non-NULL, *q is set to the first char of the token
+ * *eq:out(optional) if non-NULL, *eq is set to one char past the last char of the token. 
+ * [q, eq) bracket the token.
+ */
 int
 gettoken(char **ps, char *es, char **q, char **eq)
 {
   char *s;
   int ret;
 
-  s = *ps;
-  while(s < es && strchr(whitespace, *s))
+  s = *ps; // let s point to the first char of the input
+  while(s < es && strchr(whitespace, *s)) // skip whitespace
     s++;
-  if(q)
+  if(q) // if q is non-NULL, set *q to s
     *q = s;
-  ret = *s;
-  switch(*s){
-  case 0:
+  ret = *s; // ret is the first char of the tokrn
+  switch(*s){ 
+  case 0: // if *s is 0, return 0
     break;
   case '|':
   case '(':
@@ -304,7 +411,7 @@ gettoken(char **ps, char *es, char **q, char **eq)
       s++;
     break;
   }
-  if(eq)
+  if(eq) // if eq is non-NULL, set *eq to s
     *eq = s;
 
   while(s < es && strchr(whitespace, *s))
@@ -312,6 +419,11 @@ gettoken(char **ps, char *es, char **q, char **eq)
   *ps = s;
   return ret;
 }
+
+/*
+ * what dose gettoken do?
+ * gettoken returns the type of the token and set *ps to one char past the last char of the current token. if q and eq is non-NULL, set *q to pointer pointing to the first char of token, *eq to one char past the last char of the current token.
+ */
 
 int
 peek(char **ps, char *es, char *toks)
@@ -325,6 +437,11 @@ peek(char **ps, char *es, char *toks)
   return *s && strchr(toks, *s);
 }
 
+/*
+ * what dose peek do?
+ * return 1 if *ps pointing to a char in toks.
+ */
+
 struct cmd *parseline(char**, char*);
 struct cmd *parsepipe(char**, char*);
 struct cmd *parseexec(char**, char*);
@@ -336,9 +453,9 @@ parsecmd(char *s)
   char *es;
   struct cmd *cmd;
 
-  es = s + strlen(s);
-  cmd = parseline(&s, es);
-  peek(&s, es, "");
+  es = s + strlen(s); // pointing to the terminator 0 at the end of the input
+  cmd = parseline(&s, es); 
+  peek(&s, es, ""); // let s point to next non-whitespace char
   if(s != es){
     fprintf(2, "leftovers: %s\n", s);
     panic("syntax");
@@ -352,8 +469,8 @@ parseline(char **ps, char *es)
 {
   struct cmd *cmd;
 
-  cmd = parsepipe(ps, es);
-  while(peek(ps, es, "&")){
+  cmd = parsepipe(ps, es); // what does parsepipe do?
+  while(peek(ps, es, "&")){ 
     gettoken(ps, es, 0, 0);
     cmd = backcmd(cmd);
   }
@@ -369,9 +486,9 @@ parsepipe(char **ps, char *es)
 {
   struct cmd *cmd;
 
-  cmd = parseexec(ps, es);
+  cmd = parseexec(ps, es); // what does parseexec do?
   if(peek(ps, es, "|")){
-    gettoken(ps, es, 0, 0);
+    gettoken(ps, es, 0, 0); // set *ps to the first char of the right cmd
     cmd = pipecmd(cmd, parsepipe(ps, es));
   }
   return cmd;
@@ -383,10 +500,10 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
   int tok;
   char *q, *eq;
 
-  while(peek(ps, es, "<>")){
+  while(peek(ps, es, "<>")){ // set *ps to the first char not in <>
     tok = gettoken(ps, es, 0, 0);
     if(gettoken(ps, es, &q, &eq) != 'a')
-      panic("missing file for redirection");
+      panic("missing file for redirection"); // if gettoken not return word type 'a' panic
     switch(tok){
     case '<':
       cmd = redircmd(cmd, q, eq, O_RDONLY, 0);
@@ -420,20 +537,23 @@ parseblock(char **ps, char *es)
 
 struct cmd*
 parseexec(char **ps, char *es)
+  /*
+   * the only function that creates an execcmd.
+   */
 {
   char *q, *eq;
   int tok, argc;
   struct execcmd *cmd;
   struct cmd *ret;
 
-  if(peek(ps, es, "("))
+  if(peek(ps, es, "(")) // if the first char of next token is '(', return parseblock(ps, es)
     return parseblock(ps, es);
 
-  ret = execcmd();
-  cmd = (struct execcmd*)ret;
+  ret = execcmd(); // create an execcmd
+  cmd = (struct execcmd*)ret; // transform type of ret to execcmd
 
   argc = 0;
-  ret = parseredirs(ret, ps, es);
+  ret = parseredirs(ret, ps, es); // if the first char of next token is not '(', call parseredirs
   while(!peek(ps, es, "|)&;")){
     if((tok=gettoken(ps, es, &q, &eq)) == 0)
       break;

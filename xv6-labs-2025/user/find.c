@@ -4,7 +4,7 @@
 #include "kernel/fs.h"
 #include "kernel/fcntl.h"
 
-int find(char *path, char *name) {
+int find(char *path, char *name, char **ap, char **ape) {
 
   /*printf("DEBUG: find: looking for %s in %s\n", name, path); */
 
@@ -54,13 +54,27 @@ int find(char *path, char *name) {
             if (strcmp(p, ".") == 0 || strcmp(p, "..") == 0) {
               ;
             } else {
-              if (find(buf, name) < 0)
+              if (find(buf, name, ap, ape) < 0)
                 return -1;
             }
             break;
           case T_FILE:
             if (strcmp(p, name) == 0) {
-              printf("%s\n", buf);
+              if (ap == 0) {
+                printf("%s\n", buf);
+              } else {
+                int pid = 0;
+                pid = fork();
+                if (pid == -1) {
+                  fprintf(2, "find: cannot fork\n");
+                  exit(1);
+                } else if (pid == 0) {
+                  *ape++ = buf;
+                  *ape = 0;
+                  exec(ap[0], ap);
+                  exit(0);
+                }
+              }
             } 
             break;
           case T_DEVICE:
@@ -74,14 +88,19 @@ int find(char *path, char *name) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc < 2) {
-    fprintf(2, "usage: find name\n");
+  char **p = 0;
+  char **pe = 0;
+  if (argc <= 2) {
+    fprintf(2, "usage: find dir name\n");
+    fprintf(2, "options: find dir name -exec cmd, this would execute cmd for each file found\n");
     exit(1);
-  } else if (argc == 2) {
-    if (find(".", argv[1]) < 0)
-      exit(1);
   } else if (argc == 3) {
-    if (find(argv[1], argv[2]) < 0)
+    if (find(argv[1], argv[2], p, pe) < 0)
+      exit(1);
+  } else if ((strcmp(argv[3], "-exec") == 0) && (argc >= 5)) {
+    p = argv + 4;
+    pe = argv + argc;
+    if (find(argv[1], argv[2], p, pe) < 0)
       exit(1);
   } else {
     fprintf(2, "usage: find name\n");

@@ -11,6 +11,7 @@ _*
 .TAGS
 
 *.bak
+*.img
 
 # C build artifacts (notes experiments, scratch builds)
 *.o

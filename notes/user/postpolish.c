@@ -38,13 +38,15 @@ token pop() {
 }
 
 
-int postpolish(char *s, int level);
+int parse(char **s, int level);
 int gettoken(char **s, char **ps, char **pe);
 
 int test_gettoken();
+int test_parse();
 
 int main(int argc, char *argv[]) {
     test_gettoken(); 
+    test_parse();
     return 0;
 }
 
@@ -79,6 +81,13 @@ int test_gettoken() {
     return 0;
 }
 
+int test_parse() {
+    char *test_str1 = "a * ((b - c) / (d + e))";
+    printf("test_str1: %s\n", test_str1);
+    parse(&test_str1, 3);
+    return 0;
+}
+
 int gettoken(char **psc, char **ps, char **pe) {
     if (top != 0) {
         token t = pop();
@@ -108,6 +117,67 @@ int gettoken(char **psc, char **ps, char **pe) {
             return 'v';
     }
     return -1;
+}
+
+int parse(char **s, int level) {
+    char *ps, *pe;
+    int tokentype;
+    
+    switch (level) {
+        case 1:
+            tokentype = gettoken(s, &ps, &pe);
+            if (tokentype == 'v') {
+                if (!ps || !pe) {
+                    printf("error: ps or pe is null\n");
+                    return -1;
+                }
+                while (ps < pe) {
+                    putchar(*ps);
+                    (ps)++;
+                }
+                printf(" ");
+            } else if (tokentype == '(') {
+                if (parse(s, 3) < 0) return 1;
+                tokentype = gettoken(s, &ps, &pe);
+                if (tokentype != ')') {
+                    printf("error: tokentype is not )\n");
+                    return -1;
+                }
+            } else {
+                printf("Format error: tokentype is not v or (\n");
+                return -1;
+            } 
+            break;
+        case 2:
+            if (parse(s, 1) < 0) return -1;
+            while (1) {
+                tokentype = gettoken(s, &ps, &pe);
+                if (tokentype != 0 && strchr(level2ops, tokentype)) {
+                    int tmpop = tokentype;
+                    if (parse(s, 1) < 0) return -1;
+                    printf("%c ", tmpop);
+                } else {
+                    push(tokentype, ps, pe);
+                    break;
+                }
+            }
+            break;
+        case 3:
+            if (parse(s, 2) < 0) return -1;
+            while (1) {
+                tokentype = gettoken(s, &ps, &pe);
+                if (tokentype != 0 && strchr(level3ops, tokentype)) {
+                    int tmpop = tokentype;
+                    if (parse(s, 2) < 0) return -1;
+                    printf("%c ", tmpop);
+                } else {
+                    push(tokentype, ps, pe);
+                    break;
+                }
+            }
+            break;
+        }
+    return 0;
 }
 
 

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #define MAXSTACK 100
 
@@ -159,6 +160,8 @@ int re2nfa(char *re, State **start_node) {
     for (; *p; p++) {
         switch (*p) {
             default:
+                if (!isalpha(*p))
+                    return -1;
                 s = state(*p, NULL, NULL );
                 if (pushfrag(frag(s, list1(&s->out))) == -1)
                     return -1;
@@ -366,6 +369,11 @@ int main(int argc, char *argv[]) {
     char *re8 = "(ab)";
     char *re9 = "a|(b?c)|d";
     char *re10 = "a|(b*c)|d";
+    char *re11 = "()";
+    char *re12 = "|";
+    char *re13 = ".";
+    char *re14 = "ab|";
+    char *re15 = "(a|";
 
     State *s1 = NULL;
     re2nfa(re1, &s1);
@@ -425,6 +433,41 @@ int main(int argc, char *argv[]) {
     re2nfa(re10, &s10);
     printf("s10:\n");
     show_nfa(s10, 0);
+    visited_pointer = 0;
+
+    State *s11 = NULL;
+    if (re2nfa(re11, &s11) == -1)
+        printf("syntax error\n");
+    printf("s11:\n");
+    show_nfa(s11, 0);
+    visited_pointer = 0;
+
+    State *s12 = NULL;
+    if (re2nfa(re12, &s12) == -1)
+        printf("syntax error\n");
+    printf("s12:\n");
+    show_nfa(s12, 0);
+    visited_pointer = 0;
+
+    State *s13 = NULL;
+    if (re2nfa(re13, &s13) == -1)
+        printf("syntax error\n");
+    printf("s13:\n");
+    show_nfa(s13, 0);
+    visited_pointer = 0;
+
+    State *s14 = NULL;
+    if (re2nfa(re14, &s14) == -1)
+        printf("syntax error\n");
+    printf("s14:\n");
+    show_nfa(s14, 0);
+    visited_pointer = 0;
+
+    State *s15 = NULL;
+    if (re2nfa(re15, &s15) == -1)
+        printf("syntax error\n");
+    printf("s15:\n");
+    show_nfa(s15, 0);
     visited_pointer = 0;
 
     return 0;

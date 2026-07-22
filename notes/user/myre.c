@@ -93,103 +93,220 @@ Ptrlist *append(Ptrlist *l1, Ptrlist *l2) {
 // highest priority: char, ()
 // operator with priority 2 '+', '*', '?'
 // operator with priority 1 '|'
-State *re2nfa(char *re) {
-    char *p = re;
-    int lstack[MAXSTACK], cur_level = 1;
-    memset(lstack, -1, sizeof(lstack));
-    Frag fstack[MAXSTACK], e1, e2, e;
-    int sp = 0;
+char opstack[MAXSTACK];
+Frag fragstack[MAXSTACK];
+int opstack_pointer = 0, fragstack_pointer = 0;
+
+int pushop(char op) {
+    if (opstack_pointer == MAXSTACK) {
+        // printf("DEBUG: opstack overflow, op:%c\n", op);
+        return -1;
+    }
+    opstack[opstack_pointer++] = op;
+    return 0;
+}
+
+int popop() {
+    if (opstack_pointer == 0) {
+        // printf("DEBUG: opstack underflow\n");
+        return -1;
+    }
+    return opstack[--opstack_pointer];
+}
+
+int checkop() {
+    if (opstack_pointer == 0) {
+        // printf("DEBUG: opstack underflow\n");
+        return -1;
+    }
+    return opstack[opstack_pointer-1];
+}
+
+int pushfrag(Frag f) {
+    if (fragstack_pointer == MAXSTACK) {
+        // printf("DEBUG: fragstack overflow\n");
+        return -1;
+    }
+    fragstack[fragstack_pointer++] = f;
+    return 0;
+}
+
+int popfrag(Frag *f) {
+    if (fragstack_pointer == 0) {
+        // printf("DEBUG: fragstack underflow\n");
+        return -1;
+    }
+    *f = fragstack[--fragstack_pointer];
+    return 0;
+}
+
+static int priority(char op) {
+    switch (op) {
+        case '|':
+            return 1;
+        case '.':
+            return 2;
+        default:
+            return 0;
+    }
+}
+
+int re2nfa(char *re, State **start_node) {
+    int opstacktop;
+    Frag e1, e2, e;
     State *s;
-
-    if (re == NULL) 
-        return NULL;
-
-    for (p=re; *p; p++) {
+    char *p = re;
+    for (; *p; p++) {
         switch (*p) {
             default:
-                if (sp > MAXSTACK - 1) {
-                    fprintf(stderr, "stack overflow\n");
-                    exit(1);
-                }
-                s = state(*p, NULL, NULL);
-                fstack[sp] = frag(s, list1(&s->out));
-                lstack[sp] = cur_level;
-                sp++;
-                break;
-            case '(':
-                cur_level++;
-                break;
-            case ')':
-                while (lstack[sp-1] == cur_level)
-                    sp--;
-                for (int i=1; lstack[sp+i] == cur_level || lstack[sp+i] == -cur_level; i++) {
-                    if (lstack[sp+i] == -1) {
-                        e1 = fstack[sp];
-                        e2 = fstack[sp+(++i)];
-                        s = state(Split, e1.start, e2.start);
-                        fstack[sp] = frag(s, append(e1.out, e2.out));
-                    } else {
-                        e1 = fstack[sp];
-                        e2 = fstack[sp+i];
-                        patch(e1.out, e2.start);
-                        fstack[sp] = frag(e1.start, e2.out);
+                s = state(*p, NULL, NULL );
+                if (pushfrag(frag(s, list1(&s->out))) == -1)
+                    return -1;
+                if (checkop() != -1) {
+                    if (priority(checkop()) >= priority('.')) {
+                        opstacktop = popop();
+                        if (popfrag(&e2) == -1)
+                            return -1;
+                        if (popfrag(&e1) == -1)
+                            return -1;
+                        switch (opstacktop) {
+                            default:
+                                return -1;
+                                break;
+                            case '.':
+                                patch(e1.out, e2.start);
+                                pushfrag(frag(e1.start, e2.out));
+                                break;
+                        }
                     }
                 }
-                lstack[sp++] = --cur_level;
+                if (pushop('.') == -1)
+                    return -1;
                 break;
             case '?':
-                if (sp == 0) {
-                    fprintf(stderr, "syntax error: ? not preceded by an unit");
-                    exit(1);
-                }
-                e = fstack[sp-1];
+                if (popfrag(&e) == -1)
+                    return -1;
                 s = state(Split, e.start, NULL);
-                fstack[sp-1] = frag(s, append(e.out, list1(&s->out1)));
+                if (pushfrag(frag(s, append(list1(&s->out1), e.out))) == -1)
+                    return -1;
                 break;
             case '*':
-                if (sp == 0) {
-                    fprintf(stderr, "syntax error: * not preceded by an unit");
-                    exit(1);
-                }
-                e = fstack[sp-1];
+                if (popfrag(&e) == -1)
+                    return -1;
                 s = state(Split, e.start, NULL);
                 patch(e.out, s);
-                fstack[sp-1] = frag(s, list1(&s->out1));
+                if (pushfrag(frag(s, list1(&s->out1))) == -1)
+                    return -1;
                 break;
             case '+':
-                if (sp == 0) {
-                    fprintf(stderr, "syntax error: + not preceded by an unit");
-                    exit(1);
-                }
-                e = fstack[sp-1];
+                if (popfrag(&e) == -1)
+                    return -1;
                 s = state(Split, e.start, NULL);
                 patch(e.out, s);
-                fstack[sp-1] = frag(e.start, list1(&s->out1));
+                if (pushfrag(frag(s, list1(&s->out1))) == -1)
+                    return -1;
                 break;
             case '|':
-                if (sp == 0) {
-                    fprintf(stderr, "syntax error: | not preceded by an unit");
-                    exit(1);
+                if (popop() == -1)
+                    return -1;
+                if (checkop() != -1 ||priority(checkop()) >= priority('|')) {
+                    opstacktop = popop();
+                    switch (opstacktop) {
+                        default:
+                            return -1;
+                            break;
+                        case '.':
+                            popfrag(&e1);
+                            popfrag(&e2);
+                            pushfrag(frag(e1.start, append(e1.out, e2.out)));
+                            break;
+                        case '|':
+                            if (popfrag(&e2) == -1)
+                                return -1;
+                            if (popfrag(&e1) == -1)
+                                return -1;
+                            s = state(Split, e1.start, e2.start);
+                            pushfrag(frag(s, append(e1.out, e2.out)));
+                            break;
+                    }
                 }
-                lstack[sp++] = -cur_level;
+                if (pushop('|') == -1)
+                    return -1;
+                break;
+            case '(':
+                if (pushop('(') == -1)
+                    return -1;
+                break;
+            case ')':
+                if (popop() == -1)
+                    return -1;
+                while (checkop() != '(' && checkop() != -1) {
+                    opstacktop = popop();
+                    if (popfrag(&e2) == -1)
+                        return -1;
+                    if (popfrag(&e1) == -1)
+                        return -1;
+                    switch (opstacktop) {
+                        default:
+                            return -1;
+                            break;
+                        case '.':
+                            if (popfrag(&e2) == -1)
+                                return -1;
+                            if (popfrag(&e1) == -1)
+                                return -1;
+                            patch(e1.out, e2.start);
+                            pushfrag(frag(e1.start, e2.out));
+                            break;
+                        case '|':
+                            if (popfrag(&e2) == -1)
+                                return -1;
+                            if (popfrag(&e1) == -1)
+                                return -1;
+                            s = state(Split, e1.start, e2.start);
+                            pushfrag(frag(s, append(e1.out, e2.out)));
+                            break;
+                    }
+                }
+                if ((opstacktop = popop()) == -1 || opstacktop != '(')
+                    return -1;
+                if (pushop('.') == -1)
+                    return -1;
                 break;
         }
-    }   
-    for (int i=1; i<sp; i++) {
-        if (lstack[i] == -1) {
-            e1 = fstack[0];
-            e2 = fstack[++i];
-            s = state(Split, e1.start, e2.start);
-            fstack[0] = frag(s, append(e1.out, e2.out));
-        } else {
-            e1 = fstack[0];
-            e2 = fstack[i];
-            patch(e1.out, e2.start);
-            fstack[0] = frag(e1.start, e2.out);
+    }
+    if ((opstacktop = popop()) == -1 || opstacktop != '.')
+        return -1;
+    while ((opstacktop = popop()) != -1) {
+        switch (opstacktop) {
+            default:
+                return -1;
+                break;
+            case '.':
+                if (popfrag(&e2) == -1)
+                    return -1;
+                if (popfrag(&e1) == -1)
+                    return -1;
+                patch(e1.out, e2.start);
+                pushfrag(frag(e1.start, e2.out));
+                break;
+            case '|':
+                if (popfrag(&e2) == -1)
+                    return -1;
+                if (popfrag(&e1) == -1)
+                    return -1;
+                s = state(Split, e1.start, e2.start);
+                pushfrag(frag(s, append(e1.out, e2.out)));
+                break;
         }
     }
-    patch(fstack[0].out, &matchstate);
-    return fstack[0].start;
+    if (popfrag(&e) == -1)
+        return -1;
+    patch(e.out, &matchstate);
+    *start_node = e.start;
+    if (fragstack_pointer != 0)
+        return -1;
+    return 0;
 }
 
 void *state_visted[MAXSTACK];
@@ -246,48 +363,70 @@ int main(int argc, char *argv[]) {
     char *re5 = "ea?b+c*d";
     char *re6 = "a|b";
     char *re7 = "a|b|c";
-    char *re8 = "a|(bc)|d";
+    char *re8 = "(ab)";
     char *re9 = "a|(b?c)|d";
     char *re10 = "a|(b*c)|d";
-    State *s1 = re2nfa(re1);
+
+    State *s1 = NULL;
+    re2nfa(re1, &s1);
     printf("s1:\n");
     show_nfa(s1, 0);
     visited_pointer = 0;
-    State *s2 = re2nfa(re2);
+
+    State *s2 = NULL;
+    re2nfa(re2, &s2);
     printf("s2:\n");
     show_nfa(s2, 0);
     visited_pointer = 0;
-    State *s3 = re2nfa(re3);
+
+    State *s3 = NULL;
+    re2nfa(re3, &s3);
     printf("s3:\n");
     show_nfa(s3, 0);
     visited_pointer = 0;
-    State *s4 = re2nfa(re4);
+
+    State *s4 = NULL;
+    re2nfa(re4, &s4);
     printf("s4:\n");
     show_nfa(s4, 0);
     visited_pointer = 0;
-    State *s5 = re2nfa(re5);
+
+    State *s5 = NULL;
+    re2nfa(re5, &s5);
     printf("s5:\n");
     show_nfa(s5, 0);
     visited_pointer = 0;
-    State *s6 = re2nfa(re6);
+
+    State *s6 = NULL;
+    re2nfa(re6, &s6);
     printf("s6:\n");
     show_nfa(s6, 0);
     visited_pointer = 0;
-    State *s7 = re2nfa(re7);
+
+    State *s7 = NULL;
+    re2nfa(re7, &s7);
     printf("s7:\n");
     show_nfa(s7, 0);
-    visited_pointer = 0;
-    State *s8 = re2nfa(re8);
+    visited_pointer = 0; 
+
+    State *s8 = NULL;
+    re2nfa(re8, &s8);
     printf("s8:\n");
     show_nfa(s8, 0);
     visited_pointer = 0;
-    State *s9 = re2nfa(re9);
+
+    State *s9 = NULL;
+    re2nfa(re9, &s9);
     printf("s9:\n");
     show_nfa(s9, 0);
     visited_pointer = 0;
-    State *s10 = re2nfa(re10);
+
+    State *s10 = NULL;
+    re2nfa(re10, &s10);
     printf("s10:\n");
     show_nfa(s10, 0);
+    visited_pointer = 0;
+
     return 0;
 }
 

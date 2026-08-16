@@ -6,6 +6,12 @@
 #define MAX_TOKENS 1024
 #define MAX_CHILDREN 16
 
+// error handling part
+typedef struct {
+    int pos;
+    const char *message;
+} ParseError;
+
 typedef enum {
     TOK_CHAR,
 

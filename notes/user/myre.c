@@ -417,7 +417,7 @@ void show_cst(CstNode *node, int level) {
     }
 }
 
-int test_parser() {
+int test_parser_legal1() {
     char *str = "(ab|c)*de?f";
     Lexer lex;
     lex.str = str;
@@ -429,6 +429,17 @@ int test_parser() {
     return 0;
 }
 
+int test_parser_legal2() {
+    char *str = "ab+(cd|e)?f";
+    Lexer lex;
+    lex.str = str;
+    TokenStream ts = lex_regex(&lex);
+    Parser p;
+    p.ts = &ts;
+    CstNode *regex = parse_regex(&p);
+    show_cst(regex, 0);
+    return 0;
+}
 
 
 int test_lexer() {
@@ -451,7 +462,8 @@ int main(int argc, char *argv[])
     // test part
     test_lexer();
     // test parser
-    test_parser();
+    test_parser_legal1();
+    test_parser_legal2();
     return 0;
 }
 

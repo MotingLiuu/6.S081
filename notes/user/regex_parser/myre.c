@@ -187,7 +187,18 @@ int follows_regex(TokenKind kind) {
 // parser part
 typedef struct {
     TokenStream *ts;
+
+    int has_error;
+    ParseError error;
 } Parser;
+
+void parser_error(Parser *p, const char *message) {
+    if (p->has_error)
+        return;
+    p->has_error = 1;
+    p->error.pos = peek(p->ts)->pos;
+    p->error.message = message;
+}
 
 typedef enum {
     CST_REGEX,

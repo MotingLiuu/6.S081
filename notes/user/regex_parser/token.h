@@ -1,3 +1,6 @@
+#ifndef REGEX_PARSER_H
+#define REGEX_PARSER_H
+
 typedef enum {
     TOK_CHAR,
     TOK_STAR,
@@ -14,3 +17,5 @@ typedef struct {
     char ch;
     int pos;
 } Token;
+
+#endif

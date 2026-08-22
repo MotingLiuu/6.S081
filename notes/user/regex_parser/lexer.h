@@ -23,7 +23,6 @@ typedef struct {
 typedef struct {
     Token *tokens;
     int count;
-    int cap;
 } TokenStream;
 
 int lex(const char *src, TokenStream *out);

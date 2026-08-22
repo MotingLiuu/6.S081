@@ -99,6 +99,11 @@ int parse_atom(Parser *p, AstNode **node) {
 int parse_repeat(Parser *p, AstNode **node) {
     (*node) = malloc(sizeof(AstNode));
     (*node)->kind = AST_REPEAT;
+
+    if (!first_atom(p)) {
+        return -1;
+    }
+
     parse_atom(p, &((*node)->repeat.atom));
     if (expect(p, TOK_STAR)) {
         (*node)->repeat.qkind = '*';
@@ -121,6 +126,11 @@ int parse_concat(Parser *p, AstNode **node) {
         if ((*node)->concat.count >= MAX_CHILD) {
             exit(8);
         }
+
+        if (!first_repeat(p)) {
+            return -1;
+        }
+
         parse_repeat(p, &((*node)->concat.repeat[(*node)->concat.count]));
     } while (first_repeat(p));
     return 0;
@@ -135,6 +145,11 @@ int parse_alt(Parser *p, AstNode **node) {
         if ((*node)->alt.count >= MAX_CHILD) {
             exit(8);
         }
+
+        if (!first_concat(p)) {
+            return -1;
+        }
+
         parse_concat(p, &((*node)->alt.concat[(*node)->alt.count]));
     } while (expect(p, TOK_PIPE));
     return 0;
@@ -143,6 +158,11 @@ int parse_alt(Parser *p, AstNode **node) {
 int parse(Parser *p, AstNode **node) {
     (*node) = malloc(sizeof(AstNode));
     (*node)->kind = AST_REG;
+
+    if (!first_alt(p)) {
+        return -1;
+    }
+
     parse_alt(p, &((*node)->regex.alt));
     if (!expect(p, TOK_EOF)) {
         return 0;

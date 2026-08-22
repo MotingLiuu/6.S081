@@ -2,11 +2,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-int ast_node(AstNode **node) {
-    *node = malloc(sizeof(AstNode));
-    return 0;
-}
-
 int free_ast(AstNode *node) {
     if (!node)
         return 0;
@@ -37,6 +32,10 @@ int free_ast(AstNode *node) {
             break;
     }
     free(node);
+    return 0;
+}
+
+int new_regex(AstNode **node) {
     return 0;
 }
 

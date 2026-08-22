@@ -88,6 +88,17 @@ int parse_atom(Parser *p, AstNode **node) {
         (*node)->atom.is_char = 0;
         (*node)->atom.ch = '(';
         (*node)->atom.alt = NULL;
+
+        if (!first_alt(p)) {
+            return -1;
+        }
+
+        parse_alt(p, &((*node)->atom.alt));
+
+        if (!expect(p, TOK_RPAREN)) {
+            return -1;
+        }
+
     } else {
         (*node)->atom.is_char = 1;
         (*node)->atom.ch = p->ts.tokens[p->pos].ch;
@@ -112,8 +123,9 @@ int parse_repeat(Parser *p, AstNode **node) {
     } else if (expect(p, TOK_QMARK)) {
         (*node)->repeat.qkind = '?';
     } else {
-        return -1;
-    }
+        (*node)->repeat.qkind = 0;
+    } 
+
     return 0;
 }
 
@@ -132,6 +144,7 @@ int parse_concat(Parser *p, AstNode **node) {
         }
 
         parse_repeat(p, &((*node)->concat.repeat[(*node)->concat.count]));
+        (*node)->concat.count++;
     } while (first_repeat(p));
     return 0;
 }
@@ -151,6 +164,8 @@ int parse_alt(Parser *p, AstNode **node) {
         }
 
         parse_concat(p, &((*node)->alt.concat[(*node)->alt.count]));
+        (*node)->alt.count++;
+
     } while (expect(p, TOK_PIPE));
     return 0;
 }

@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include "nfa.h"
 
+int nfaid;
+
 int show_nfa(NfaNode *nfa, int indent) {
     if (!nfa) {
         return -1;
@@ -11,23 +13,23 @@ int show_nfa(NfaNode *nfa, int indent) {
     }
     switch (nfa->kind) {
         case NFA_SP:
-            printf("[ID:%d]: %c, %c\n",nfa->id ,nfa->split.c1, nfa->split.c2);
+            printf("[ID:%d]: %c, %c\n",nfa->id ,nfa->c1, nfa->c2);
             if (nfa->visited) {
                 return 0;
             } else {
                 nfa->visited = 1;
             }
-            show_nfa(nfa->split.next1, indent + 1);
-            show_nfa(nfa->split.next2, indent + 1);
+            show_nfa(nfa->next1, indent + 1);
+            show_nfa(nfa->next2, indent + 1);
             break;
         case NFA_NOR:
-            printf("(ID:%d): %c\n",nfa->id ,nfa->normal.c);
+            printf("(ID:%d): %c\n",nfa->id ,nfa->c1);
             if (nfa->visited) {
                 return 0;
             } else {
                 nfa->visited = 1;
             }
-            show_nfa(nfa->normal.next, indent + 1);
+            show_nfa(nfa->next1, indent + 1);
             break;
         case NFA_END:
             printf("{ID:%d}\n", nfa->id);
@@ -37,3 +39,33 @@ int show_nfa(NfaNode *nfa, int indent) {
     }
     return 0;
 }
+
+// Contract:
+// 1. ast is not NULL
+// 2. ast is a valid AST
+int nfa(AstNode *ast, NfaNode *pre, DanNfa *danfa) {
+    // defensive check
+    if (!ast) {
+        exit(7);
+    }
+
+    // create an empty NfaNode
+    switch (ast->kind) {
+        case AST_REG:
+            break;
+        case AST_ALT:
+            break;
+        case AST_CONCAT:
+            break;
+        case AST_REPEAT:
+            break;
+        case AST_ATOM:
+            break;
+    }
+
+    return 0;
+}
+
+
+
+

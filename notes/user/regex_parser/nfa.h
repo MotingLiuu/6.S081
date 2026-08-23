@@ -1,5 +1,6 @@
 #ifndef NFA_H
 #define NFA_H
+#include "ast.h"
 
 typedef enum {
     NFA_SP,
@@ -8,24 +9,23 @@ typedef enum {
 } NfaKind;
 
 typedef struct NfaNode NfaNode;
+typedef struct DanNfa DanNfa;
 
 struct NfaNode {
     NfaKind kind;
     int id;
     int visited;
-    union {
-        struct {
-            char c;
-            NfaNode *next;
-        } normal;
-        struct {
-            char c1, c2;
-            NfaNode *next1, *next2;
-        } split;
-    };
+    char c1, c2;
+    NfaNode *next1, *next2;
 };
 
-int show_nfa(NfaNode *nfa, int indent);
+struct DanNfa {
+    NfaNode **node;
+    DanNfa *dan;
+};
 
+int append(DanNfa *list, DanNfa *node);
+int show_nfa(NfaNode *nfa, int indent);
+int nfa(AstNode *ast, NfaNode *pointer, DanNfa *danfa);
 
 #endif

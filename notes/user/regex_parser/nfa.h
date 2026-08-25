@@ -26,6 +26,8 @@ struct DanNfa {
 
 int append(DanNfa *list, DanNfa *node);
 int show_nfa(NfaNode *nfa, int indent);
-int nfa(AstNode *ast, NfaNode *pointer, DanNfa *danfa);
+int nfa(AstNode *ast, NfaNode **start);
+int nfa_alt(AstNode *ast, NfaNode **start, DanNfa **dang);
+int nfa_atom(AstNode *ast, NfaNode **start, DanNfa **dang);
 
 #endif

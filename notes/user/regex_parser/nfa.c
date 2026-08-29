@@ -1,8 +1,32 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "nfa.h"
+#define NFA_ARENA_SIZE 1024
 
 int nfaid;
+struct NfaArena {
+    NfaNode nodes[NFA_ARENA_SIZE];
+    int p;
+} nfa_arena;
+
+NfaNode *new_nfa_node() {
+    if (nfa_arena.p >= NFA_ARENA_SIZE) {
+        return NULL;
+    }
+    return &(nfa_arena.nodes[nfa_arena.p++]);
+}
+
+struct DanNfaArena {
+    DanNfa nodes[NFA_ARENA_SIZE];
+    int p;
+} dannfa_arena;
+
+DanNfa *new_dannfa_node() {
+    if (dannfa_arena.p >= NFA_ARENA_SIZE) {
+        return NULL;
+    }
+    return &(dannfa_arena.nodes[dannfa_arena.p++]);
+}
 
 int reset_nfavisited(NfaNode *nfa) {
     if (!nfa || nfa->visited == 0) {
@@ -96,16 +120,6 @@ void show_dang(DanNfa *dang) {
     }
 }
 
-int free_dannfat(DanNfa *dang) {
-    DanNfa *tmp;
-    while (dang) {
-        tmp = dang->dan;
-        free(dang);
-        dang = tmp;
-    }
-    return 0;
-}
-
 // Contract:
 // 1. ast is not NULL
 // 2. ast type is AST_ATOM
@@ -116,7 +130,7 @@ int nfa_atom(AstNode *ast, NfaNode **start, DanNfa **dang) {
     }
 
     if (ast->atom.is_char) {
-        NfaNode *node1 = malloc(sizeof(NfaNode));
+        NfaNode *node1 = new_nfa_node();
         node1->kind = NFA_NOR;
         node1->id = nfaid++;
         node1->visited = 0;
@@ -127,7 +141,7 @@ int nfa_atom(AstNode *ast, NfaNode **start, DanNfa **dang) {
 
         *start = node1;
 
-        DanNfa *nfanode = malloc(sizeof(DanNfa));
+        DanNfa *nfanode = new_dannfa_node();
         nfanode->node = &(node1->next1);
         nfanode->dan = NULL;
 
@@ -149,10 +163,17 @@ int nfa_repeat(AstNode *ast, NfaNode **start, DanNfa **dang) {
     NfaNode *start_atom;
     DanNfa *dang_atom;
 
-    nfa_atom(ast->repeat.atom, &start_atom, &dang_atom);
+    if (nfa_atom(ast->repeat.atom, &start_atom, &dang_atom) == -1) {
+        return -1;
+    }
 
-    NfaNode *node1 = malloc(sizeof(NfaNode));
-    DanNfa *nfanode = malloc(sizeof(DanNfa));
+    NfaNode *node1 = new_nfa_node();
+    DanNfa *nfanode = new_dannfa_node();
+
+    if (!node1 || !nfanode) {
+        return -1;
+    }
+
     switch (ast->repeat.qkind) {
         case '*':
             node1->kind = NFA_SP;
@@ -190,7 +211,11 @@ int nfa_repeat(AstNode *ast, NfaNode **start, DanNfa **dang) {
             *start = node1;
 
             nfanode->node = &(node1->next2);
-            concat(nfanode, dang_atom);
+            nfanode->dan = NULL;
+
+            if (concat(nfanode, dang_atom) == -1) {
+                return -1;
+            };
 
             *dang = nfanode;
 
@@ -203,20 +228,21 @@ int nfa_repeat(AstNode *ast, NfaNode **start, DanNfa **dang) {
             node1->c2 = 0;
             node1->next1 = NULL;
             node1->next2 = NULL;
+    
             node1->next1 = start_atom;
             node1->next2 = NULL;
-
+    
             if (connect(dang_atom, node1) == -1) {
-                free_dannfat(dang_atom);
                 return -1;
             }
-            free_dannfat(dang_atom);
-
+    
             *start = start_atom;
-
+    
             nfanode->node = &(node1->next2);
             nfanode->dan = NULL;
-
+    
+            *dang = nfanode;       
+    
             break;
         default:
             *start = start_atom;
@@ -232,8 +258,8 @@ int nfa_concat(AstNode *ast, NfaNode **start, DanNfa **dang) {
     if (!ast || ast->kind != AST_CONCAT) {
         exit(7);
     }
-    DanNfa *tmp_dang;
-    NfaNode *tmp_start;
+    DanNfa *tmp_dang = NULL;
+    NfaNode *tmp_start = NULL;
     for (int i = 0; i < ast->concat.count; i++) {
         if (i == 0) {
             nfa_repeat(ast->concat.repeat[i], start, dang);
@@ -262,7 +288,7 @@ int nfa_alt(AstNode *ast, NfaNode **start, DanNfa **dang) {
             }
         } else {
             NfaNode *new_node;
-            new_node = malloc(sizeof(NfaNode));
+            new_node = new_nfa_node();
             new_node->kind = NFA_SP;
             new_node->id = nfaid++;
             new_node->visited = 0;
@@ -287,13 +313,32 @@ int nfa_alt(AstNode *ast, NfaNode **start, DanNfa **dang) {
     return 0;
 }
 
-int nfa(AstNode *ast, NfaNode **start) {
-    //defensive check
-    if (!ast || ast->kind != AST_REG) {
+int
+nfa(AstNode *ast, NfaNode **start)
+{
+    /* defensive check */
+    if (!ast || ast->kind != AST_REG || !start) {
         exit(7);
     }
-    DanNfa *dang;
-    NfaNode *end_node = malloc(sizeof(NfaNode));
+
+    nfaid = 0;
+
+    /*
+     * arena checkpoint
+     */
+    int nfa_mark = nfa_arena.p;
+    int dannfa_mark = dannfa_arena.p;
+    int id_mark = nfaid;
+
+    *start = NULL;
+
+    DanNfa *dang = NULL;
+
+    NfaNode *end_node = new_nfa_node();
+    if (!end_node) {
+        goto fail;
+    }
+
     end_node->kind = NFA_END;
     end_node->id = nfaid++;
     end_node->visited = 0;
@@ -301,13 +346,28 @@ int nfa(AstNode *ast, NfaNode **start) {
     end_node->c2 = 0;
     end_node->next1 = NULL;
     end_node->next2 = NULL;
+
     if (nfa_alt(ast->regex.alt, start, &dang) == -1) {
-        return -1;
+        goto fail;
     }
+
     if (connect(dang, end_node) == -1) {
-        return -1;
+        goto fail;
     }
+
+    dannfa_arena.p = dannfa_mark;
+
     return 0;
+
+
+fail:
+    nfa_arena.p = nfa_mark;
+    dannfa_arena.p = dannfa_mark;
+    nfaid = id_mark;
+
+    *start = NULL;
+
+    return -1;
 }
 
 

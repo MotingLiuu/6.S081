@@ -51,11 +51,6 @@ int first_concat(Parser *p) {
     if (first_repeat(p)) {
         return 1;
     }  
-    TokenKind kind;
-    peek(p, &kind);
-    if (kind == TOK_PIPE) {
-        return 1;
-    }
     return 0;
 }
 
@@ -180,9 +175,9 @@ int parse(Parser *p, AstNode **node) {
 
     parse_alt(p, &((*node)->regex.alt));
     if (!expect(p, TOK_EOF)) {
-        return 0;
+        return -1;
     }
-    return -1;
+    return 0;
 }
 
 

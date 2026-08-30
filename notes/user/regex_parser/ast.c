@@ -35,10 +35,6 @@ int free_ast(AstNode *node) {
     return 0;
 }
 
-int new_regex(AstNode **node) {
-    return 0;
-}
-
 int show_ast(AstNode *node, int indent) {
     if (!node) {
         return 0;

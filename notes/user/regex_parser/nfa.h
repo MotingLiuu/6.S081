@@ -29,5 +29,7 @@ int show_nfa(NfaNode *nfa, int indent);
 int nfa(AstNode *ast, NfaNode **start);
 int nfa_alt(AstNode *ast, NfaNode **start, DanNfa **dang);
 int nfa_atom(AstNode *ast, NfaNode **start, DanNfa **dang);
+int match(NfaNode *start, char *str);
+void free_nfa_arena();
 
 #endif

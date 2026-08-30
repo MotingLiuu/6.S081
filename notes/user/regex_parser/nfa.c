@@ -16,6 +16,10 @@ NfaNode *new_nfa_node() {
     return &(nfa_arena.nodes[nfa_arena.p++]);
 }
 
+void free_nfa_arena() {
+    nfa_arena.p = 0;
+}
+
 struct DanNfaArena {
     DanNfa nodes[NFA_ARENA_SIZE];
     int p;
@@ -26,6 +30,10 @@ DanNfa *new_dannfa_node() {
         return NULL;
     }
     return &(dannfa_arena.nodes[dannfa_arena.p++]);
+}
+
+void free_dannfa_arena() {
+    dannfa_arena.p = 0;
 }
 
 int reset_nfavisited(NfaNode *nfa) {
@@ -368,6 +376,130 @@ fail:
     *start = NULL;
 
     return -1;
+}
+
+typedef struct MatchList MatchList;
+struct MatchList {
+    NfaNode *list[NFA_ARENA_SIZE];
+    int count;
+};
+
+MatchList list1, list2;
+
+int addstate(MatchList *list, NfaNode *node)
+{
+    if (!list) {
+        exit(7);
+    }
+
+    if (!node) {
+        return 0;
+    }
+
+    if (node->kind == NFA_SP) {
+        if (addstate(list, node->next1) == -1) {
+            return -1;
+        }
+
+        if (addstate(list, node->next2) == -1) {
+            return -1;
+        }
+
+        return 0;
+    }
+
+    for (int i = 0; i < list->count; i++) {
+        if (list->list[i] == node) {
+            return 0;
+        }
+    }
+
+    if (list->count >= NFA_ARENA_SIZE) {
+        return -1;
+    }
+
+    list->list[list->count++] = node;
+
+    return 0;
+}
+
+int step(MatchList *list1, MatchList *list2, char c)
+{
+    // defensive check
+    if (!list1 || !list2 || c == 0) {
+        exit(7);
+    }
+
+    list2->count = 0;
+
+    for (int i = 0; i < list1->count; i++) {
+
+        NfaNode *node = list1->list[i];
+
+        if (!node) {
+            exit(7);
+        }
+
+        switch (node->kind) {
+
+        case NFA_NOR:
+            if (node->c1 == c) {
+                if (addstate(list2, node->next1) == -1) {
+                    return -1;
+                }
+            }
+
+            break;
+
+        case NFA_END:
+            break;
+
+        case NFA_SP:
+            exit(7);
+
+        default:
+            exit(7);
+        }
+    }
+
+    return 0;
+}
+
+int match(NfaNode *start, char *str)
+{
+    if (!start || !str) {
+        exit(7);
+    }
+
+    MatchList *clist = &list1;
+    MatchList *nlist = &list2;
+
+    clist->count = 0;
+    nlist->count = 0;
+
+    if (addstate(clist, start) == -1) {
+        return -1;
+    }
+
+    for (int i = 0; str[i] != '\0'; i++) {
+
+        if (step(clist, nlist, str[i]) == -1) {
+            return -1;
+        }
+
+        MatchList *tmp = clist;
+        clist = nlist;
+        nlist = tmp;
+    }
+
+    for (int i = 0; i < clist->count; i++) {
+
+        if (clist->list[i]->kind == NFA_END) {
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 

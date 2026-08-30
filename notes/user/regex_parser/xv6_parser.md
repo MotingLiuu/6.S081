@@ -129,6 +129,14 @@ Atom          → CHAR
               | "(" Alternation ")"
 ```
 
+# OwnerShip of RegexParser
+
+Principle of OwnerShip:
+1. The memo malloced by `malloc` in callee should be transfered to caller. then free it in caller.
+    ownership is moved through `*start`
+2. The final object is to construct an AstTree. Every Function would construct an AstTree, then the owner of AstTree would be moved to `start(NfaNode *)`
+
+
 
 
 

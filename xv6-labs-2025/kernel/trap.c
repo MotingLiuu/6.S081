@@ -37,19 +37,21 @@ trapinithart(void)
 uint64
 usertrap(void)
 {
-  int which_dev = 0;
+  int which_dev = 0; 
 
-  if((r_sstatus() & SSTATUS_SPP) != 0)
+  if((r_sstatus() & SSTATUS_SPP) != 0) //MT: what does this mean?
     panic("usertrap: not from user mode");
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
-  w_stvec((uint64)kernelvec);
+  w_stvec((uint64)kernelvec); //MT: what does this mean?
+                                 //MT: Set stvec to kernelvec
 
   struct proc *p = myproc();
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
+  // MT: sepc is not saved to trapframe in trampoline.S? saved here?
   
   if(r_scause() == 8){
     // system call

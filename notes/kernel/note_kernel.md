@@ -201,6 +201,206 @@ sret
 ```
 
 
+# How does xv6 manage memo?
+
+```txt
+layout of pa
+
+低地址
+│
+│   一些设备、boot 相关区域
+│
+├────────────────────────────
+│ 0x80000000 = KERNBASE
+│
+│   xv6 kernel code
+│   xv6 kernel data
+│   ...
+│
+│ end
+├────────────────────────────
+│
+│   可用物理内存
+│
+│   page
+│   page
+│   page
+│   ...
+│
+├────────────────────────────
+│ PHYSTOP
+│
+高地址
+```
+
+kmem.freelist
+```txt
+kmem.freelist
+      │
+      ↓
++------------------+
+| free page        |
+| next ------------|----+
++------------------+    |
+                       ↓
+                  +------------------+
+                  | free page        |
+                  | next ------------|----+
+                  +------------------+    |
+                                         ↓
+                                    +------------------+
+                                    | free page        |
+                                    | next = 0         |
+                                    +------------------+
+```
+
+Use the first bytes of free pages to store the pointer to the next free pages.
+```c
+r = (struct run*)pa
+```
+
+```txt
+0x87000000
++-----------------------------+
+| next pointer     8 bytes    |
++-----------------------------+
+|                             |
+|        剩余空闲空间          |
+|                             |
++-----------------------------+
+```
+
+```txt
+Physical RAM
+
++--------------------------+
+| kernel                   |
+| kernel                   |
+| kernel                   |
++--------------------------+ ← end
+| allocated page           |
++--------------------------+
+| free page                | ← struct run
+| next --------------------|----+
++--------------------------+    |
+| allocated page           |    |
++--------------------------+    |
+| free page                | <--+
+| next --------------------|----+
++--------------------------+    |
+| free page                | <--+
+| next = NULL              |
++--------------------------+
+| ...                      |
++--------------------------+ ← PHYSTOP
+```
+
+
+# how does kernel run in CPU?
+
+```txt
+ROM
+ ↓
+firmware
+ ↓
+bootloader
+ ↓
+load kernel
+```
+
+bootloader would load kernel code to RAM
+
+```txt
+磁盘上的 kernel ELF
+        ↓
+加载到 RAM
+        ↓
+0x80000000:
++----------------------+
+| kernel machine code  |
+| kernel machine code  |
+| kernel data          |
+| ...                  |
++----------------------+
+```
+
+CPU would run from 0x80000000 of RAM
+
+```txt
+             PC
+             │
+             ↓
+RAM    0x80000000
+       +----------------+
+       | _entry         |
+       | ...            |
+       +----------------+
+```
+
+The first running instruction is `kernel/entry.S`
+At this point, there is no VA.
+```txt
+CPU address
+    │
+    │ 没有 page table translation
+    ↓
+physical RAM
+```
+
+The first thing `entry.S` does is to set up the stack pointer to run c code.
+```txt
+high address
+
++------------------+
+| local variables  |
++------------------+
+| saved ra         |
++------------------+
+| ...              |
++------------------+
+        ↑
+        sp
+```
+
+This code set the sp to `stack0` in `entry.S`
+```riscv
+        la sp, stack0
+```
+
+After stack is set, `entry.S` would jump to `start.c` to run `start()`
+
+```txt
+_entry
+  ↓
+start()
+  ↓
+mret
+  ↓
+main()
+```
+
+`main()` would call `kinit()` to initialize the physical page allocator.
+After `kinit()` is called, kernel can use `kalloc()`
+
+`w_satp(...)` would open VA. Before calling `w_satp()`, kernel has already construct a direct mapping. CPU would not notice the switching.
+```txt
+        Before
+
+PC 0x80001234
+       ↓
+PA 0x80001234
+
+
+         After
+
+PC 0x80001234
+       ↓
+MMU
+       ↓
+page table
+       ↓
+PA 0x80001234
+```
 
 
 
@@ -209,6 +409,10 @@ sret
 
 
 
+
+Questions:
+1. kernel runs in PA, no translation from VA to PA?
+2. what is MMU?
 
 
 

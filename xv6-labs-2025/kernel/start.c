@@ -8,7 +8,8 @@ void main();
 void timerinit();
 
 // entry.S needs one stack per CPU.
-__attribute__ ((aligned (16))) char stack0[4096 * NCPU];
+__attribute__ ((aligned (16))) char stack0[4096 * NCPU]; 
+// MT: declares space for a stack so that xv6 can run C code.
 
 // entry.S jumps here in machine mode on stack0.
 void
@@ -23,6 +24,17 @@ start()
   // set M Exception Program Counter to main, for mret.
   // requires gcc -mcmodel=medany
   w_mepc((uint64)main);
+  /*
+  At this point, CPU is in M-mode.
+
+  CPU
+  
+  current mode = M-mode
+  current PC   = start() 某一行
+  
+  mstatus.MPP = S
+  mepc        = address of main 
+  */
 
   // disable paging for now.
   w_satp(0);
@@ -57,6 +69,7 @@ timerinit()
   
   // enable the sstc extension (i.e. stimecmp).
   w_menvcfg(r_menvcfg() | (1L << 63)); 
+  // This enable Supervisor-mode Timer Interrupts
   
   // allow supervisor to use stimecmp and time.
   w_mcounteren(r_mcounteren() | 2);

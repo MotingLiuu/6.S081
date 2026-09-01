@@ -13,12 +13,12 @@ __attribute__ ((aligned (16))) char stack0[4096 * NCPU];
 // entry.S jumps here in machine mode on stack0.
 void
 start()
-{
+{ // MT: In this point, CPU is in M-MODE.
   // set M Previous Privilege mode to Supervisor, for mret.
   unsigned long x = r_mstatus();
-  x &= ~MSTATUS_MPP_MASK;
-  x |= MSTATUS_MPP_S;
-  w_mstatus(x);
+  x &= ~MSTATUS_MPP_MASK; // MT: set MPP bits to 0
+  x |= MSTATUS_MPP_S; // MT: set MPP to Supervisor
+  w_mstatus(x); // set CPU to Supervisor mode
 
   // set M Exception Program Counter to main, for mret.
   // requires gcc -mcmodel=medany

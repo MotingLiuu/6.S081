@@ -8,7 +8,7 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct proc proc[NPROC]; // proc is a global array.
 
 struct proc *initproc;
 
@@ -106,13 +106,13 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
-static struct proc*
+static struct proc* // MT: this func would return a proc pointer
 allocproc(void)
 {
   struct proc *p;
 
   for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
+    acquire(&p->lock); //MT: acquire the lock of p
     if(p->state == UNUSED) {
       goto found;
     } else {
@@ -122,7 +122,7 @@ allocproc(void)
   return 0;
 
 found:
-  p->pid = allocpid();
+  p->pid = allocpid(); //MT: what does this mean?
   p->state = USED;
 
   // Allocate a trapframe page.
@@ -130,10 +130,10 @@ found:
     freeproc(p);
     release(&p->lock);
     return 0;
-  }
+  } //MT: what does this mean?
 
   // An empty user page table.
-  p->pagetable = proc_pagetable(p);
+  p->pagetable = proc_pagetable(p); // MT: what does this mean?
   if(p->pagetable == 0){
     freeproc(p);
     release(&p->lock);
@@ -147,7 +147,7 @@ found:
   p->context.sp = p->kstack + PGSIZE;
 
   return p;
-}
+} //MT: what does this function mean?
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -221,7 +221,7 @@ userinit(void)
 {
   struct proc *p;
 
-  p = allocproc();
+  p = allocproc(); // what does allocproc do?
   initproc = p;
   
   p->cwd = namei("/");
@@ -502,7 +502,9 @@ yield(void)
 void
 forkret(void)
 {
-  extern char userret[];
+  extern char userret[]; // MT:what does this mean? what is this grammar?
+                         // recover the user registers and return to user mode?
+                         // explain this in detail.
   static int first = 1;
   struct proc *p = myproc();
 

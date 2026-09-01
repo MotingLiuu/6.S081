@@ -12,6 +12,10 @@ _entry:
         la sp, stack0
         li a0, 1024*4
         csrr a1, mhartid
+        # MT: what does this line mean? csrr a1, mhartid
+        # csrr would read cpu's mhartid and save it to a register
+        # every harts would run code in entry.S seperately
+        # so evey hart has its own stack to run c code.
         addi a1, a1, 1
         mul a0, a0, a1
         add sp, sp, a0

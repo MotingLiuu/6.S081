@@ -402,11 +402,729 @@ page table
 PA 0x80001234
 ```
 
+all of the process
+```txt
+Power on / QEMU starts
+        │
+        ▼
+物理 RAM 已存在
+CPU、设备已存在
+        │
+        ▼
+boot code / QEMU
+把 xv6 kernel 装入 RAM
+        │
+        ▼
+PA 0x80000000
++------------------------+
+| _entry                 |
+| kernel code            |
+| kernel data            |
+| initial stacks         |
++------------------------+
+        │
+        ▼
+PC → _entry
+        │
+        ▼
+entry.S
+设置初始 sp
+        │
+        ▼
+start()
+M-mode 初始化
+        │
+        ▼
+mret
+        │
+        ▼
+main()
+S-mode
+paging 仍关闭
+        │
+        ▼
+kinit()
+        │
+        ├── kernel image：已经占用
+        │
+        └── end ~ PHYSTOP：加入 freelist
+        │
+        ▼
+kvminit()
+用 kalloc() 创建 page tables
+        │
+        ▼
+kvminithart()
+写 satp
+开启 MMU
+        │
+        ▼
+kernel virtual memory 开始工作
+        │
+        ▼
+proc / trap / plic / disk / fs 初始化
+        │
+        ▼
+userinit()
+建立第一个 user process
+        │
+        ▼
+scheduler()
+        │
+        ▼
+CPU 开始运行 user process
+        │
+        ├──── syscall/trap ────► kernel
+        │                         │
+        ◄──────── sret ───────────┘
+```
+
+
+
+# GCC inline asm
+
+```c
+asm volatile(
+    "assembly"
+    : outputs
+    : inputs
+    : clobbers
+);
+```
+
+```c
+static inline uint64
+r_mstatus() // r means read, mstatus is a CSR in CPU
+{
+  uint64 x;
+  asm volatile("csrr %0, mstatus" : "=r" (x) );
+  return x;
+}
+```
+
+`=r` means this is an output operand.
+`=` means assembly would write into `x`. `r` would let compiler give a general-purpose register.
+`"=r" (x)` means this asm would return a result, let compiler find a general-purpose register and save it into `x`
+
+# CSR
+
+1. mstatus register
+MPP (Machine Previous Privilege) is a field in mstatus register.
+It tells CPU what privilege mode would return to when calling `mret`.
+```txt
+mstatus
+
+63                           12 11                0
++-----------------------------+----+---------------+
+|           ...               |MPP |      ...      |
++-----------------------------+----+---------------+
+```
+two bits can encode different privilege modes.
+```txt
+MPP = 00  → User
+MPP = 01  → Supervisor
+MPP = 11  → Machine
+```
+
+2. mepc register (Machine Exception Program Counter)
+stores the jump address of `mret`
+
+when CPU `mret` it would `PC <- mepc`
+
+3. satp register (Supervisor Address Translation and Protection)
+satp would tell MMU:
+1. wether paging is enabled
+2. which page mode is enabled
+3. where is the root page table
+
+satp controls the address translation in U-mode and S-mode
+The instruction running in M-mode would not use `satp` to translate address
+
+```txt
+63        60 59             44 43                    0
++-----------+-----------------+------------------------+
+|   MODE    |      ASID       |         PPN            |
++-----------+-----------------+------------------------+
+```
+
+```txt
+MODE = 0
+    ↓
+Bare mode
+    ↓
+不进行地址翻译
+
+MODE = 8
+    ↓
+Sv39
+    ↓
+使用三级 page table 进行地址翻译
+```
+
+xv6 would use `MAKE_SATP(pagetable)1 to enable paging
+This would set
+```txt
+MODE = Sv39
+PPN  = 根 page table 的物理页号
+```
+Then use `w_satp(...)` to enable page table
+
+3. medeleg register (Machine Exception Delegation Register)
+
+controls what exceptions would be delegated to S-mode
+```c
+w_medeleg(0xffff);
+```
+would set
+```txt
+0000 ... 1111111111111111
+         ↑
+       低 16 bit
+```
+
+```txt
+medeleg
+
+bit 0   instruction address misaligned
+bit 1   instruction access fault
+bit 2   illegal instruction
+bit 3   breakpoint
+bit 4   load address misaligned
+bit 5   load access fault
+bit 6   store address misaligned
+bit 7   store access fault
+bit 8   ecall from U-mode
+...
+bit 12  instruction page fault
+bit 13  load page fault
+bit 15  store page fault
+```
+
+4. mideleg register (Machine Interrupt Delegation Register)
+
+controls what interrupts would be delegated to S-mode
+```txt
+Supervisor Software Interrupt
+Supervisor Timer Interrupt
+Supervisor External Interrupt
+
+Machine Software Interrupt
+Machine Timer Interrupt
+Machine External Interrupt
+...
+```
+
+5. sie register (Supervisor Interrupt Enable Register)
+
+controls what interrupts would be enabled in S-mode
+
+e.g. there is a external interrupt
+```txt
+UART
+ │
+ │ “有字符到了”
+ ↓
+PLIC
+ │
+ ↓
+CPU external interrupt
+```
+
+At first, CPU would check `mideleg` to see if it would be delegated to S-mode
+
+Then CPU would check `sie` to see whether this interrupt is allowed to be dealed in S-mode
+
+```txt
+External interrupt
+        │
+        ▼
+┌─────────────────────┐
+│ mideleg              │
+│ 归不归 S-mode 管？   │
+└──────────┬──────────┘
+           │ yes
+           ▼
+┌─────────────────────┐
+│ sie.SEIE            │
+│ 这种中断开没开启？   │
+└──────────┬──────────┘
+           │ yes
+           ▼
+┌─────────────────────┐
+│ sstatus.SIE         │
+│ S-mode 全局允许吗？  │
+└──────────┬──────────┘
+           │ yes
+           ▼
+      trap to S-mode
+```
+
+5. PMP pmpaddr0 pmpcfg0
+pmpaddr0 controls where the pmp can control
+pmpcfg0 controls what kind of pmp is enabled
+
+every PMP entry in pmpcfg0 has a config byte
+```txt
+bit 7      6 5   4 3    2   1   0
++---------+-----+------+---+---+---+
+|    L    |  0  |  A   | X | W | R |
++---------+-----+------+---+---+---+
+```
+
+```txt
+R = Read
+W = Write
+X = Execute
+
+A = Address matching mode
+L = Lock
+```
+
+```c
+w_pmpcfg0(0xf);
+```
+sets
+```txt
+R = 1
+W = 1
+X = 1
+A = TOR
+```
+
+PMP has several modes
+```txt
+A = 00    OFF
+A = 01    TOR
+A = 10    NA4
+A = 11    NAPOT
+```
+So, xv6 use TOR Top Of Range, `pmpaddr0` would be the top of this PMP
+So the range of entry 0 is `[0, pmpaddr0<<2]`. PMP address do not save the last 2 bits of address.
+
+```txt
+User / Supervisor
+       │
+       │ virtual address
+       ▼
+┌───────────────────────┐
+│ MMU / Page Table      │
+│                       │
+│ VA → PA               │
+│ 检查 PTE 权限          │
+└──────────┬────────────┘
+           │
+           │ physical address
+           ▼
+┌───────────────────────┐
+│ PMP                   │
+│                       │
+│ 检查物理地址权限        │
+└──────────┬────────────┘
+           │
+           ▼
+       Physical RAM
+```
+
+6. mie Machine Interrupt Enable Register
+
+STIE is Supervisor Timer Interrupt Enable.
+
+7. menvcfg Machine Environment Configuration Register
+```c
+  w_menvcfg(r_menvcfg() | (1L << 63)); 
+```
+This would set
+```txt
+S-mode xv6
+
+      │
+      │ write stimecmp
+      ▼
+hardware timer comparator
+```
+xv6 is allowed to write to stimecmp, do not need to get in M-mode to write to stimecmp
+
+8. mcounteren Machine Counter Enable Register
+
+This register controls whether S-mode would allowed to access some hardware counters (e.g. cycle time instret)
+
+
+# page table in xv6
+
+RISC-V Sv39 is 3-level page table
+The root of the tree is a 4096-byte page table that contains 512 PTEs, which contain the physical address for page-table pages in the next level of the tree. Each of those pages contains 512 PTEs for the final level in the tree.
+
+```txt
+pagetable
+   |
+   | VPN[2]
+   v
+Level 2 page table
+   |
+   | VPN[1]
+   v
+Level 1 page table
+   |
+   | VPN[0]
+   v
+Level 0 page table
+   |
+   v
+PTE
+```
+
+only bottom 39 bits of a 64bit virtual address are used.
+```txt
+xxx01111111 11111111111111111111111111111111
+```
+Each PTE (Page Table Entry) has a 44 bit PPN (Physical page number) and some flags
+```txt
+63                    54 53                10 9        0
++-----------------------+--------------------+----------+
+|      Reserved         |        PPN         | flags    |
++-----------------------+--------------------+----------+
+```
+The paging hardware translate a virtual address by using the top 27 bits of the 39 bits to index into the page table to find PTE
+making a 56bit physical address whose 44 bits come from the PPN in the PTE and whose bottom 12 bits are copied from the original virtual address.
+
+A RISC-V caches page table entries in a TLB (Translation Lookaside Buffer).
+
+## kvminit() and kvmmake()
+
+The big picture of paging
+
+```txt
+                 MMU OFF
+                    │
+                    ▼
+          physical memory usable
+                    │
+                    ▼
+                 kinit()
+                    │
+              initialize kalloc
+                    │
+                    ▼
+                kvminit()
+                    │
+              kalloc page(s)
+             for page tables
+                    │
+                    ▼
+             build page table
+                    │
+                    ▼
+             kvminithart()
+                    │
+               write satp
+                    │
+                    ▼
+                 MMU ON
+```
+
+Questions:
+1. what is MMU?
+Memory Management Unit
+```txt
+Virtual Address (VA)
+        |
+        v
+      MMU
+        |
+        v
+Physical Address (PA)
+        |
+        v
+       RAM
+```
+`satp` register in CPU tells the MMU:
+    1. whether paging is enabled
+    2. what page-table scheme is being used
+    3. where the root page table is
+
+
+2. At the beginning MMU is disabled? It is enabled during `kvminit()`?
+```txt
+Machine starts
+     |
+     v
+entry.S
+     |
+     v
+start()
+     |
+     | satp = 0
+     v
+paging disabled
+     |
+     v
+main()
+     |
+     +--> kinit()
+     |
+     +--> kvminit()
+     |      create kernel page table
+     |
+     +--> kvminithart()
+            enable paging/MMU
+```
+
+
+
+3. before `kvminit()`, kernel already enabled `kalloc()`?
+```c
+void
+main()
+{
+  if(cpuid() == 0){
+    consoleinit();
+    printfinit();
+
+    kinit();         // physical page allocator
+    kvminit();       // create kernel page table
+    kvminithart();   // turn on paging
+```
+`kalloc()` must already work before virtual memo is enabled.
+
+
+```txt
+kvminit()
+   |
+   v
+kvmmake()
+   |
+   | 创建一张完整的内核三级页表
+   | 建立 UART / VIRTIO / PLIC / kernel text / RAM / trampoline / stack 映射
+   v
+kernel_pagetable
+   |
+   | 还只是内存中的数据结构
+   v
+kvminithart()
+   |
+   | 写 satp
+   v
+CPU/MMU 开始真正使用它
+```
+
+`pagetable_t kernel_pagetable` is a pointer pointing to level-2 page table.
+```
+kernel_pagetable
+      |
+      v
++----------------------+     一个 4096B 页面
+| L2 PTE 0             |
+| L2 PTE 1             |
+| L2 PTE 2             |
+| ...                  |
+| L2 PTE 511           |
++----------------------+
+       |
+       | 某些 PTE 指向其他物理页
+       v
++----------------------+     L1 page table
+| 512 个 PTE           |
++----------------------+
+       |
+       v
++----------------------+     L0 page table
+| 512 个 PTE           |
++----------------------+
+```
+
+The calling chain of `kvmmake()`
+```txt
+kvmmake()
+   ↓
+kvmmap()
+   ↓
+mappages()
+   ↓
+每处理一个 4KB 页面
+   ↓
+walk()
+   ↓
+根据 VA 找到 L0 PTE
+   ↓
+必要时 kalloc() 创建 L1/L0 页表
+   ↓
+*pte = PA2PTE(pa) | perm | PTE_V
+```
+
+### mappages(pagetable, 0x4000, 0x3000, 0x80004000, PTE_R | PTE_W);
+
+```c
+#define PXMASK 0x1FF
+#define PXSHIFT(level) (PGSHIFT + (9*(level)))
+#define PX(level, va) ((((uint64) (va)) >> PXSHIFT(level)) & PXMASK)
+```
+
+PX(0, va) = (va >> 12) & PXMASK
+PX(1, va) = (va >> 21) & PXMASK
+PX(2, va) = (va >> 30) & PXMASK
+
+This extract the three 9-bit page table indices from a virtual address.
+
+```c
+define PTE2PA(pte) (((pte) >> 10) << 12)
+```
+
+Think:
+
+Every VA has a corresponding PTE in the page table.
+
+The first 9 bits would find the PTE in level-2 page table.
+Then the second 9 bits would find the PTE in level-1 page table.
+And the last 9 bits would find the PTE in level-0 page table.
+
+This 27 bits just seperate the VA into 2^27 pages, and any address in the Virtual Space would be delegated to one of 2^27 page (one PTE serials num), and kernel would save the information of corresponding PA into PTE.
+
+An PTE is
+```txt
+63-53       53-10                10-8 8-7 7-6 6-5 5-4 4-3 3-2 2-1 1-0
+Reserved  Physical Page Number   RSW   D   A   G   U   X   W   R   V
+```
+The physical page number + offset in VA are used to find the physical address.
+
+When calling `mappages()` 
+
+```c
+mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+```
+e.g.
+`pa` is 
+```txt
+0x xxxx xxxx xxxx x000 
+```
+Then `PA2PTE(pa)` would `>>10 <<12` to get the corresponding Physical Page Number.
+```c
+*pte = PA2PTE(pa) | perm | PTE_V
+```
+After this, the mapping between 'va' and 'pa' would be saved in the page table.
+
+```c
+walk(pagetable_t pagetable, uint64 va, int alloc)
+```
+`walk()` just return the physical address of PTE corresponding to 'va'
+If the level-1 and level-0 page table is not created, it would create them.
 
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# trap in RISC-V
+```txt
+                    trap
+                 /        \
+                /          \
+        exception          interrupt
+        同步异常             异步中断
+```
+
+
+# start.c
+
+All of the process
+
+```txt
+                  CPU starts in M-mode
+                          │
+                          ▼
+                    start()
+                          │
+          ┌───────────────┼──────────────────┐
+          │               │                  │
+          ▼               ▼                  ▼
+      MPP = S          mepc=main          satp=0
+      目标模式           目标PC             暂无paging
+          │
+          ▼
+   medeleg / mideleg
+   trap交给S-mode
+          │
+          ▼
+      sie / mie
+      打开所需中断
+          │
+          ▼
+         PMP
+   给S-mode访问RAM权限
+          │
+          ▼
+      timerinit()
+   配置每hart timer
+          │
+          ▼
+    tp = mhartid
+   保存当前CPU编号
+          │
+          ▼
+         mret
+          │
+          ▼
+               S-mode main()
+```
+
+```c
+w_mie(r_mie() | MIE_STIE);
+
+w_menvcfg(r_menvcfg() | (1L << 63));
+
+w_mcounteren(r_mcounteren() | 2);
+```
+
+They deal with
+
+```txt
+① timer interrupt 要不要 enable？
+   ↓
+mie.STIE
+
+
+② S-mode 能不能直接使用 stimecmp？
+   ↓
+menvcfg.STCE
+
+
+③ S-mode 能不能读取 time？
+   ↓
+mcounteren.TM
+```
+
+seperately.
 
 
 

@@ -12,6 +12,8 @@
  * the kernel's page table.
  */
 pagetable_t kernel_pagetable;
+// MT: pagetable_t is just a pointer pointing to int64
+// MT: it is a pointer pointing to level-2 page table
 
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
@@ -23,8 +25,8 @@ kvmmake(void)
 {
   pagetable_t kpgtbl;
 
-  kpgtbl = (pagetable_t) kalloc();
-  memset(kpgtbl, 0, PGSIZE);
+  kpgtbl = (pagetable_t) kalloc(); // return the address of a free page
+  memset(kpgtbl, 0, PGSIZE); // set the page to zero
 
   // uart registers
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
@@ -102,9 +104,13 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
+    // MT: pte is a pointer pointing to the PTE in corresponding page table
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
+      // MT: get the level-1 page table
     } else {
+      // MT: if there is no valid PTE in level-2 page table
+      // MT: allocate a new level-1 page table and put it in level-2 page table
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
@@ -112,6 +118,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     }
   }
   return &pagetable[PX(0, va)];
+  // MT: get the final PTE in level-0 page table
 }
 
 // Look up a virtual address, return the physical address,
@@ -165,6 +172,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if(*pte & PTE_V)
       panic("mappages: remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
+    // MT: 
     if(a == last)
       break;
     a += PGSIZE;

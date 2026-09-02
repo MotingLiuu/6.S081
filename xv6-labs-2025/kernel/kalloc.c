@@ -13,6 +13,8 @@ void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
+// why this represents the first address after kernel?
+// what is the definition of end?
 
 struct run {
   struct run *next;
@@ -21,7 +23,7 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+} kmem; 
 
 void
 kinit()
@@ -59,6 +61,7 @@ kfree(void *pa)
   acquire(&kmem.lock);
   r->next = kmem.freelist;
   kmem.freelist = r;
+  // added the freed page to the head of the free list
   release(&kmem.lock);
 }
 

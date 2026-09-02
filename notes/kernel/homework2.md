@@ -1,6 +1,40 @@
 # Suppose that an xv6 kernel has used up all of the struct proc entries in the struct proc proc[NPROC] table (i.e., none of them have state == UNUSED). What happens if one of the processes calls exec()?
 
-Answer:
+`exec()` would run normally. Because `exec()` would replace the current process not occupy another process.
+
+# What happens if one of the processes calls `fork()`?
+
+`kfork()` would return `-1` for there is no free process.
+
+# What happens if one of the processes calls `kill()` on an existing PID and then call `fork()`?
+
+For `kill()` just set `p->killed` to `1`. But `allocproc()` in `kfork()` would search for processes with `p->UNUSED`.
+
+`kill()` just set `p->killed` to `1`. When the process killed starts to run, it would find that its `killed` is `1`, then ecall `kexit()` to set `p->state` to `ZOMBIE`. After parent calls `wait()`, it would be set to `UNUSED` through `freeproc()`
+
+```txt
+kill(pid)
+   |
+   v
+p->killed = 1
+   |
+   | 目标进程之后运行
+   v
+kexit()
+   |
+   v
+ZOMBIE
+   |
+   | parent calls wait()
+   v
+freeproc()
+   |
+   v
+UNUSED
+```
+
+
+
 The hole process of `exec()`
 ```txt
 用户程序
@@ -93,7 +127,7 @@ The layout of `struct trapframe` is:
 struct trapframe {
   /*   0 */ uint64 kernel_satp;
   /*   8 */ uint64 kernel_sp;
-  /*  16 */ uint64 kernel_trap;
+  /*  16 */ uint64 user_trap;
   /*  24 */ uint64 epc;
   /*  32 */ uint64 kernel_hartid;
 

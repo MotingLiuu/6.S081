@@ -1008,6 +1008,30 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 `walk()` just return the physical address of PTE corresponding to 'va'
 If the level-1 and level-0 page table is not created, it would create them.
 
+## `pagetable_t kvmmake(void)`
+
+```txt
+虚拟地址                             映射到物理地址
+
+UART0        ---------------------> UART0
+VIRTIO0      ---------------------> VIRTIO0
+PLIC         ---------------------> PLIC
+
+KERNBASE     ---------------------> KERNBASE
+kernel text
+
+etext        ---------------------> etext
+kernel data
+physical RAM
+
+...
+TRAMPOLINE   ---------------------> trampoline 的真实物理地址
+
+kernel stack ---------------------> kalloc() 得到的物理页
+```
+
+This function just makes a direct mapping from va to pa.
+
 
 
 
@@ -1127,10 +1151,112 @@ mcounteren.TM
 seperately.
 
 
+# proc.c
+
+```txt
+             process A
+
+user mode:
+              user stack
+                  ↑
+                  |
+               user code
+
+                  |
+                  | trap / syscall
+                  v
+
+kernel mode:
+              kernel code
+                  |
+                  v
+             kernel stack A
+```
+
+```c
+                 proc_mapstacks()
+
+proc[0]
+   |
+   +---- kalloc() ----> physical page A
+   |
+   +---- KSTACK(0)
+             |
+             | kvmmap
+             v
+       KSTACK(0) VA ─────────> PA A
+
+
+proc[1]
+   |
+   +---- kalloc() ----> physical page B
+   |
+   +---- KSTACK(1)
+             |
+             v
+       KSTACK(1) VA ─────────> PA B
+
+
+Virtual layout:
+
+TRAMPOLINE
+────────────────────────
+
+unmapped guard page
+────────────────────────
+KSTACK(0) ───────────────→ physical page A
+────────────────────────
+
+unmapped guard page
+────────────────────────
+KSTACK(1) ───────────────→ physical page B
+────────────────────────
+
+unmapped guard page
+────────────────────────
+KSTACK(2) ───────────────→ physical page C
+────────────────────────
+```
+
+## struct proc
+
+```c
+UNUSED
+   |
+   | allocproc()
+   v
+USED
+   |
+   | 初始化完成
+   v
+RUNNABLE
+   |
+   | scheduler 选中
+   v
+RUNNING
+   |
+   +------> SLEEPING
+   |
+   +------> RUNNABLE
+   |
+   +------> ZOMBIE
+                |
+                | parent wait()
+                v
+             UNUSED
+```
+
+## void procinit(void)
 
 Questions:
-1. kernel runs in PA, no translation from VA to PA?
-2. what is MMU?
+1.
+how does `acquire(&p->lock)` work?
+why only one thread can acquire the lock?
+Is there a situation that two threads runs `acquire(&p->lock)` at the same time? So both get the lock?
+
+2. 
+what is `wait_lock`?
+
 
 
 

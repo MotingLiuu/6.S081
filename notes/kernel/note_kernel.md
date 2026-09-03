@@ -1257,6 +1257,145 @@ Is there a situation that two threads runs `acquire(&p->lock)` at the same time?
 2. 
 what is `wait_lock`?
 
+# vm.c
+
+## uint64 walkaddr(pagetable_t pagetable, uint64 va)
+
+`walk()` just return the address of PTE self.
+
+`walkaddr()` returns the physical page address correspondin to va
+It would call `walk()` to find the corresponding PTE, then use `pa = PTE(*pte)` to get the physical address.
+
+
+## int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+
+This function would copy from kernel to user. Copy len bytes from src to va dstva in a given page table.
+
+1. pagetable is the root page table of the user process.
+2. dstva is the destination virtual address in user space.
+3. src is the address of the kernel buffer
+4. len is the length of the buffer
+
+## int copying(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
+
+This function would copy from user to kernel. Copy len bytes from va srcva in a given page table.
+
+## int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
+
+This function would copy a null-terminated string from user to kernel.
+
+
+
+```c
+kernel src
+   ↓
+"hello"
+
+copyout(pagetable, 0x4123, src, 5)
+
+最终：
+
+user VA 0x4123
+   ↓
+"hello"
+```
+
+
+
+
+
+
+
+
+
+
+# lab2
+
+## Look at the backtrace output, which function called syscall?
+
+Answer:
+`usertrap()` in `trap.c`
+
+## what is the value of p->trapframe->a7 and what does that value represent?
+
+in `syscall(void)` `num=p->trapframe-a7` then call `syscalls[num]()`, so `p->trapframe->a7` represent the syscall num.
+
+For example, when calling `write(2, "$ ", 2)`
+1st
+```c
+li a7, SYS_write
+ecall
+ret
+```
+The code that compiler generated for the function call loads the three arguments into register `a0`, `a1` and `a2`. Then `write()` function loads the system call nuber, `SYS_write` into `a7`
+
+The `ecall` instruction traps from user space into the kernel, and causes `uservec`, `usertrap` and then `syscall` to execute.
+
+```c
+用户程序
+   |
+   | call write
+   |   ra = write 返回后的地址
+   v
+write:
+   li a7, SYS_write
+   ecall
+       |
+       | trap：U-mode -> S-mode
+       v
+   uservec
+   usertrap
+   syscall
+   sys_write
+       ...
+       |
+       | 内核最后通过 usertrapret / trampoline
+       | 执行 sret
+       v
+   回到用户态 write() 中 ecall 后面的指令
+   |
+   v
+ret
+   |
+   | PC <- ra
+   v
+用户程序中 call write 后面的下一条指令
+```
+
+when `ecall` is executed
+1. save address of `ecall` into `sepc`
+2. set `scause` to `8`, if in U-mode
+3. set `sstatus.SPP` to `0`, SPP would record the privilege mode before trap. When running `sret` CPU would return to `U-mode` based on the content in `SPP`
+4. `SPIE = SIE` `SIE = 0` would disable `S-mode interrupt`
+5. `PC` would jump to `stvec`, which stores the address of `uservec` in `trampoline.S`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -12,12 +12,13 @@ r_mhartid()
 // Machine Status Register, mstatus
 
 #define MSTATUS_MPP_MASK (3L << 11) // previous mode.
+// MT: 3 is 11 3L << 11 -> 1100000000000
 #define MSTATUS_MPP_M (3L << 11)
 #define MSTATUS_MPP_S (1L << 11)
 #define MSTATUS_MPP_U (0L << 11)
 
 static inline uint64
-r_mstatus()
+r_mstatus() // r means read, mstatus is a CSR in CPU
 {
   uint64 x;
   asm volatile("csrr %0, mstatus" : "=r" (x) );

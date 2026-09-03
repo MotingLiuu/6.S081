@@ -32,7 +32,7 @@ uservec:
 
         # save user a0 in sscratch so
         # a0 can be used to get at TRAPFRAME.
-        csrw sscratch, a0 # (Quesiton: what is csrw? what does this line mean?)
+        csrw sscratch, a0 
 
         # each process has a separate p->trapframe memory area,
         # but it's mapped to the same virtual address

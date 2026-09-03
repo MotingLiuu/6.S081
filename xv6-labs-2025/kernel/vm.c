@@ -355,10 +355,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    // MT: get the va of the start of the page
     if(va0 >= MAXVA)
       return -1;
   
     pa0 = walkaddr(pagetable, va0);
+    // MT: get the physical address of the start of the page
     if(pa0 == 0) {
       if((pa0 = vmfault(pagetable, va0, 0)) == 0) {
         return -1;
@@ -369,15 +371,21 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     // forbid copyout over read-only user text pages.
     if((*pte & PTE_W) == 0)
       return -1;
+    // MT: check if the page is writable
       
     n = PGSIZE - (dstva - va0);
+    // MT: the remaining bytes of the page
     if(n > len)
       n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);
+    // MT: copy n bytes from src to dst
 
     len -= n;
+    // MT: compute the remaining bytes to copy
     src += n;
+    // MT: move the src pointer to bytes waiting to be copied
     dstva = va0 + PGSIZE;
+    // MT: move the dst pointer to the next page
   }
   return 0;
 }
@@ -426,10 +434,12 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (srcva - va0);
+    // MT: n is the remaining bytes of the page
     if(n > max)
       n = max;
 
     char *p = (char *) (pa0 + (srcva - va0));
+    // p is the pa of the first byte corresponding to the srcva
     while(n > 0){
       if(*p == '\0'){
         *dst = '\0';

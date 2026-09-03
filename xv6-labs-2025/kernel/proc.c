@@ -53,8 +53,11 @@ procinit(void)
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
+      // MT: this is a lock belonging to the struct proc
+      // MT: a process can not running in two threads at the same time
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
+      // MT: record the corresponding kernel stack into the struct proc
   }
 }
 
@@ -221,7 +224,7 @@ userinit(void)
 {
   struct proc *p;
 
-  p = allocproc(); // what does allocproc do?
+  p = allocproc();
   initproc = p;
   
   p->cwd = namei("/");

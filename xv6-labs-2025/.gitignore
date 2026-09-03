@@ -27,3 +27,6 @@ barrier
 *.pcap
 TAGS
 
+# plan.md: private implementation ledger
+plan.md
+plan*

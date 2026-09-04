@@ -512,19 +512,31 @@ r_mstatus() // r means read, mstatus is a CSR in CPU
 MPP (Machine Previous Privilege) is a field in mstatus register.
 It tells CPU what privilege mode would return to when calling `mret`.
 ```txt
-mstatus
-
 63                           12 11                0
 +-----------------------------+----+---------------+
 |           ...               |MPP |      ...      |
 +-----------------------------+----+---------------+
+
+
+      bit 12:11      bit 8       bit 7       bit 5       bit 3       bit 1
+          ↓            ↓           ↓           ↓           ↓           ↓
+
+       ┌─────┐      ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐
+       │ MPP │      │ SPP │     │MPIE │     │SPIE │     │ MIE │     │ SIE │
+       └─────┘      └─────┘     └─────┘     └─────┘     └─────┘     └─────┘
+          │            │           │           │           │           │
+          ▼            ▼           ▼           ▼           ▼           ▼
+      M trap前       S trap前    trap前MIE    trap前SIE    当前M中断   当前S中断
+      privilege      privilege
 ```
+
 two bits can encode different privilege modes.
 ```txt
 MPP = 00  → User
 MPP = 01  → Supervisor
 MPP = 11  → Machine
 ```
+
 
 2. mepc register (Machine Exception Program Counter)
 stores the jump address of `mret`
@@ -1257,6 +1269,85 @@ Is there a situation that two threads runs `acquire(&p->lock)` at the same time?
 2. 
 what is `wait_lock`?
 
+
+# Parsing cmd
+
+## Grammar of cmd
+
+```txt
+cmd       ::= line
+line      ::= pipe { '&' } [ ';' line ]
+pipe      ::= block [ '|' pipe ]
+block     ::= exec
+            | '(' line ')' redirs
+exec      ::= redirs { WORD redirs }
+redirs    ::= { redir }
+redir     ::= '<' WORD
+            | '>' WORD
+            | '>>' WORD
+```
+
+## redir cmd
+
+`< word`
+redirect the stdin `fd 0` to `in`
+
+`> word`
+redirect the stdout `fd 1` to `out`
+
+`>> word`
+redirect the stdout `fd 1` to `out`, `O_WRONLY | O_CREATE`
+
+```txt
+cat file < in > out
+│   │    │  │  │  │
+│   │    │  │  │  └─ WORD
+│   │    │  │  └──── output redirection
+│   │    │  └─────── WORD
+│   │    └────────── input redirection
+│   └─────────────── argument
+└─────────────────── program
+```
+
+
+# Operation System Interface
+
+## I/O and File descriptors
+
+When launching a shell
+```c
+  while((fd = open("console", O_RDWR)) >= 0){
+
+    /*
+     * what is open("console", O_RDWR)? what is console? why fd >= 3?
+     */
+
+    if(fd >= 3){
+      close(fd);
+      break;
+    }
+  }
+```
+This code sets
+```txt
+fd 0 ──────> console
+fd 1 ──────> console
+fd 2 ──────> console
+```
+
+xv6 use `fd 2` to prompt, this is because `fd 0` and `fd 1` can be redirected to other file.
+Using `fd 2` to prompt can ensure that the prompt is always on the screen.
+
+
+
+
+
+
+
+
+
+
+
 # vm.c
 
 ## uint64 walkaddr(pagetable_t pagetable, uint64 va)
@@ -1365,9 +1456,21 @@ ret
 when `ecall` is executed
 1. save address of `ecall` into `sepc`
 2. set `scause` to `8`, if in U-mode
+3. set `SPP` to `0`
 3. set `sstatus.SPP` to `0`, SPP would record the privilege mode before trap. When running `sret` CPU would return to `U-mode` based on the content in `SPP`
 4. `SPIE = SIE` `SIE = 0` would disable `S-mode interrupt`
 5. `PC` would jump to `stvec`, which stores the address of `uservec` in `trampoline.S`
+
+
+## what was the previous mode that CPU was in?
+
+(gdb) p /x $sstatus
+$3 = 0x200000022
+
+SSP is the 8th bit in sstatus, which is `0`. So the previous mode was `S-mode`
+
+## 
+
 
 
 

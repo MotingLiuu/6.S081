@@ -10,7 +10,7 @@ struct cpu cpus[NCPU];
 
 struct proc proc[NPROC]; // proc is a global array.
 
-struct proc *initproc;
+struct proc *initproc;  // always pointing to the first user program
 
 int nextpid = 1;
 struct spinlock pid_lock;
@@ -26,7 +26,7 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
-// Allocate a page for each process's kernel stack.
+// MT: Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
 void
@@ -36,10 +36,13 @@ proc_mapstacks(pagetable_t kpgtbl)
   
   for(p = proc; p < &proc[NPROC]; p++) {
     char *pa = kalloc();
+    // pa is the physical address of the page
     if(pa == 0)
       panic("kalloc");
     uint64 va = KSTACK((int) (p - proc));
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+    // map the page below the trampoline in virtual space to pa
+    // in physical memory. PTE_R | PTE_W means read and write.
   }
 }
 
@@ -55,6 +58,7 @@ procinit(void)
       initlock(&p->lock, "proc");
       // MT: this is a lock belonging to the struct proc
       // MT: a process can not running in two threads at the same time
+      // MT: protect states of struct proc and invariants releated to scheduling
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
       // MT: record the corresponding kernel stack into the struct proc
@@ -86,9 +90,11 @@ struct proc*
 myproc(void)
 {
   push_off();
+  //MT: disable interrupts
   struct cpu *c = mycpu();
   struct proc *p = c->proc;
   pop_off();
+  //MT: enable interrupts
   return p;
 }
 
@@ -125,7 +131,7 @@ allocproc(void)
   return 0;
 
 found:
-  p->pid = allocpid(); //MT: what does this mean?
+  p->pid = allocpid(); 
   p->state = USED;
 
   // Allocate a trapframe page.
@@ -133,7 +139,7 @@ found:
     freeproc(p);
     release(&p->lock);
     return 0;
-  } //MT: what does this mean?
+  } 
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p); // MT: what does this mean?

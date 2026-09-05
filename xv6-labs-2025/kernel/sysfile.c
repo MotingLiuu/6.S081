@@ -72,8 +72,9 @@ sys_read(void)
   int n;
   uint64 p;
 
-  argaddr(1, &p);
-  argint(2, &n);
+  argaddr(1, &p); // save the address of the first argument into p
+  argint(2, &n); // save the second argument into n, assume that 2nd arg is an int
+                 // The difference between argaddr and argint is that treating arg as an address or an int.
   if(argfd(0, 0, &f) < 0)
     return -1;
   return fileread(f, p, n);

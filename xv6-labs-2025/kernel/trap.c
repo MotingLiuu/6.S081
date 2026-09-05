@@ -20,6 +20,8 @@ void
 trapinit(void)
 {
   initlock(&tickslock, "time");
+  //MT: tickslock is a global timer
+  //It is used to count the number of ticks
 }
 
 // set up to take exceptions and traps while in the kernel.

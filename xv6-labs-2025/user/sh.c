@@ -377,6 +377,9 @@ char symbols[] = "<|>&;()";
  */
 int
 gettoken(char **ps, char *es, char **q, char **eq)
+  // *q is the address of the first char of the token
+  // *eq is the address of one char past the last char of the token
+  // *ps would be set to the first char of the next token, after gettoken()
 {
   char *s;
   int ret;
@@ -494,14 +497,17 @@ parsepipe(char **ps, char *es)
   return cmd;
 }
 
+// MT: wrap struct cmd *cmd with information of dir
 struct cmd*
 parseredirs(struct cmd *cmd, char **ps, char *es)
 {
   int tok;
   char *q, *eq;
 
-  while(peek(ps, es, "<>")){ // set *ps to the first char not in <>
+  while(peek(ps, es, "<>")){
+    // MT: peek would set *ps to the first char not in whitespace
     tok = gettoken(ps, es, 0, 0);
+    // store the first token type into tok  '<', '>', or '>>'('+')
     if(gettoken(ps, es, &q, &eq) != 'a')
       panic("missing file for redirection"); // if gettoken not return word type 'a' panic
     switch(tok){
@@ -549,7 +555,8 @@ parseexec(char **ps, char *es)
   if(peek(ps, es, "(")) // if the first char of next token is '(', return parseblock(ps, es)
     return parseblock(ps, es);
 
-  ret = execcmd(); // create an execcmd
+  ret = execcmd(); // malloc a execcmd struct in memo and store the address into ret
+                   // but return a struct cmd* type
   cmd = (struct execcmd*)ret; // transform type of ret to execcmd
 
   argc = 0;

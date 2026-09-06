@@ -508,6 +508,8 @@ r_mstatus() // r means read, mstatus is a CSR in CPU
 
 # CSR
 
+1. `satp`
+
 1. mstatus register
 MPP (Machine Previous Privilege) is a field in mstatus register.
 It tells CPU what privilege mode would return to when calling `mret`.

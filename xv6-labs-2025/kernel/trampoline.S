@@ -17,9 +17,17 @@
 #include "memlayout.h"
 
 .section trampsec
+# put the code below .section trampsec in ELF section named trampsec
+# after compiled to trampoline.o
+# The ELF symbol table includes
+# Symbol        Section         Offset
+# trampoline    trampsec        0x0
+# uservec       trampsec        0x0
+# usertrap      trampsec        0x0
 .globl trampoline
 .globl usertrap
 trampoline:
+# this defines a asm symbol trampoline = address of this code(csrw sscratch, a0)
 .align 4
 .globl uservec
 uservec:    

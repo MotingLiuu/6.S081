@@ -53,7 +53,9 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  // MT: sepc is not saved to trapframe in trampoline.S? saved here?
+  //MT: sepc is a csr not a regular register
+  //MT: trampoline.S just do the least and necessay thing to switch to kernel
+  //MT: sepc will not be changed by random c code except being changed intentionally by c code.
   
   if(r_scause() == 8){
     // system call

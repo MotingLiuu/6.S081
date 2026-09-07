@@ -153,7 +153,9 @@ found:
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
+  // MT: Question: what does forkret mean?
   p->context.sp = p->kstack + PGSIZE;
+  // MT: context.sp stores the address of the kernel stack pointer
 
   return p;
 } //MT: what does this function mean?
@@ -198,6 +200,8 @@ proc_pagetable(struct proc *p)
   // to/from user space, so not PTE_U.
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
+    // MT: Question: why PGSIZE is used here?
+    // MT: The code size of the trampoline is PGSIZE?
     uvmfree(pagetable, 0);
     return 0;
   }
@@ -232,10 +236,11 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  
+  // struct proc *p is a pointer always pointing to the first user process
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  // MT: RUNNABLE means this process can be selected by the scheduler
 
   release(&p->lock);
 }

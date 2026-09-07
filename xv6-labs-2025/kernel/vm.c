@@ -104,10 +104,14 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
+    // MT: PX(level, va) get the 9 bits that represent the index in pagetable
     // MT: pte is a pointer pointing to the PTE in corresponding page table
+    // MT: every located in free memo managed by kalloc in kernel is both va and pa
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
       // MT: get the level-1 page table
+      // MT: because of pagetable is located in free memo managed by kalloc
+      // pagetable returned by PTE2PA(*pte) is va also the pa.
     } else {
       // MT: if there is no valid PTE in level-2 page table
       // MT: allocate a new level-1 page table and put it in level-2 page table

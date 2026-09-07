@@ -1,6 +1,7 @@
 //
 // driver for qemu's virtio disk device.
 // uses qemu's mmio interface to virtio.
+// MT: Question: what is mmio iterface? what is virtio?
 //
 // qemu ... -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 //
@@ -26,6 +27,7 @@ static struct disk {
   // most commands consist of a "chain" (a linked list) of a couple of
   // these descriptors.
   struct virtq_desc *desc;
+  //MT: Question: what is DMA?
 
   // a ring in which the driver writes descriptor numbers
   // that the driver would like the device to process.  it only
@@ -39,7 +41,7 @@ static struct disk {
   struct virtq_used *used;
 
   // our own book-keeping.
-  char free[NUM];  // is a descriptor free?
+  char free[NUM];  //free[0]==1 means desc[0] is free
   uint16 used_idx; // we've looked this far in used[2..NUM].
 
   // track info about in-flight operations,
@@ -71,6 +73,7 @@ virtio_disk_init(void)
      *R(VIRTIO_MMIO_VENDOR_ID) != 0x554d4551){
     panic("could not find virtio disk");
   }
+  //MT: verify the MMIO registers
   
   // reset device
   *R(VIRTIO_MMIO_STATUS) = status;
@@ -78,10 +81,12 @@ virtio_disk_init(void)
   // set ACKNOWLEDGE status bit
   status |= VIRTIO_CONFIG_S_ACKNOWLEDGE;
   *R(VIRTIO_MMIO_STATUS) = status;
+  //MT: Tell the device that it is acknowledged
 
   // set DRIVER status bit
   status |= VIRTIO_CONFIG_S_DRIVER;
   *R(VIRTIO_MMIO_STATUS) = status;
+  //MT: Tell the device that it is drived properly
 
   // negotiate features
   uint64 features = *R(VIRTIO_MMIO_DEVICE_FEATURES);
@@ -92,6 +97,7 @@ virtio_disk_init(void)
   features &= ~(1 << VIRTIO_F_ANY_LAYOUT);
   features &= ~(1 << VIRTIO_RING_F_EVENT_IDX);
   features &= ~(1 << VIRTIO_RING_F_INDIRECT_DESC);
+  //MT: kernel turns off some features
   *R(VIRTIO_MMIO_DRIVER_FEATURES) = features;
 
   // tell device that feature negotiation is complete.
@@ -137,9 +143,12 @@ virtio_disk_init(void)
   *R(VIRTIO_MMIO_DRIVER_DESC_HIGH) = (uint64)disk.avail >> 32;
   *R(VIRTIO_MMIO_DEVICE_DESC_LOW) = (uint64)disk.used;
   *R(VIRTIO_MMIO_DEVICE_DESC_HIGH) = (uint64)disk.used >> 32;
+  //MT: write the highest and lowest part of the address into 2 32bit registers seperately
+  //MT: kernel write the va into the device's registers, for the memo managed by the kalloc using direct map.
 
   // queue is ready.
   *R(VIRTIO_MMIO_QUEUE_READY) = 0x1;
+  //MT: tell the device that the descriptors, avail, used are ready
 
   // all NUM descriptors start out unused.
   for(int i = 0; i < NUM; i++)
@@ -190,6 +199,7 @@ free_chain(int i)
     int nxt = disk.desc[i].next;
     free_desc(i);
     if(flag & VRING_DESC_F_NEXT)
+      //MT: VRING_DESC_F_NEXT is 1, means there is a next descriptor in the chain
       i = nxt;
     else
       break;

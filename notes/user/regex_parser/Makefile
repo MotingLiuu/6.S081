@@ -1,13 +1,16 @@
 CC = cc
 CFLAGS = -Wall -Wextra -Werror -std=c11 -g
 
-OBJS = main.o lexer.o parser.o ast.o nfa.o
+OBJS = main.o lexer.o parser.o ast.o nfa.o regex.o
 
 regex: $(OBJS)
 	$(CC) $(CFLAGS) -o regex $(OBJS)
 
-main.o: main.c lexer.h parser.h ast.h nfa.h
+main.o: regex.h
 	$(CC) $(CFLAGS) -c main.c
+
+regex.o: regex.c regex.h
+	$(CC) $(CFLAGS) -c regex.c
 
 lexer.o: lexer.c lexer.h
 	$(CC) $(CFLAGS) -c lexer.c

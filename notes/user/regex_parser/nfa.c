@@ -443,7 +443,7 @@ int step(MatchList *list1, MatchList *list2, char c)
         switch (node->kind) {
 
         case NFA_NOR:
-            if (node->c1 == c) {
+            if (node->c1 == c || node->c1 == '.') {
                 if (addstate(list2, node->next1) == -1) {
                     return -1;
                 }

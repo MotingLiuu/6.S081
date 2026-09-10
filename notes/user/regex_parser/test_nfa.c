@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
     nfa(result2, &start_node2);
     show_nfa(start_node2, 0);
 
-    char *regex3 = "a*b";
+    char *regex3 = "a\\.*b";
 
     TokenStream ts3;
     lex(regex3, &ts3);

@@ -15,6 +15,7 @@ struct NfaNode {
     NfaKind kind;
     int id;
     int visited;
+    int backslash;
     char c1, c2;
     NfaNode *next1, *next2;
 };

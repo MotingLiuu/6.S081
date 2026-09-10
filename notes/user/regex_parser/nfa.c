@@ -78,7 +78,7 @@ int show_nfa(NfaNode *nfa, int indent) {
             show_nfa(nfa->next2, indent + 1);
             break;
         case NFA_NOR:
-            printf("(ID:%d): %c\n",nfa->id ,nfa->c1);
+            printf("(ID:%d): %c, ba: %d\n",nfa->id ,nfa->c1, nfa->backslash);
             if (nfa->visited) {
                 return 0;
             } else {
@@ -142,6 +142,7 @@ int nfa_atom(AstNode *ast, NfaNode **start, DanNfa **dang) {
         node1->kind = NFA_NOR;
         node1->id = nfaid++;
         node1->visited = 0;
+        node1->backslash = ast->atom.backslash;
         node1->c1 = ast->atom.ch;
         node1->c2 = 0;
         node1->next1 = NULL;
@@ -443,7 +444,7 @@ int step(MatchList *list1, MatchList *list2, char c)
         switch (node->kind) {
 
         case NFA_NOR:
-            if (node->c1 == c || node->c1 == '.') {
+            if (node->c1 == c || (node->c1 == '.' && !(node->backslash))) {
                 if (addstate(list2, node->next1) == -1) {
                     return -1;
                 }

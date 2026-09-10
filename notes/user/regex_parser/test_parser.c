@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
     parse(&p2, &result2);
     show_ast(result2, 0);
 
-    char *regex3 = "a*b";
+    char *regex3 = "a\\.*b";
 
     TokenStream ts3;
     lex(regex3, &ts3);

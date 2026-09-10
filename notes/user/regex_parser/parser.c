@@ -2,6 +2,7 @@
 #include "lexer.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #define MAX_CHILD 10
 
@@ -78,6 +79,7 @@ int first_regex(Parser *p) {
 // callee should malloc and create a AstNode
 int parse_atom(Parser *p, AstNode **node) {
     (*node) = malloc(sizeof(AstNode));
+    memset((*node), 0, sizeof(AstNode));
     (*node)->kind = AST_ATOM;
     if (expect(p, TOK_LPAREN)) {
         (*node)->atom.is_char = 0;
@@ -97,6 +99,7 @@ int parse_atom(Parser *p, AstNode **node) {
     } else {
         (*node)->atom.is_char = 1;
         (*node)->atom.ch = p->ts.tokens[p->pos].ch;
+        (*node)->atom.backslash = p->ts.tokens[p->pos].backslash;
         advance(p);
     }
     return 0;
@@ -104,6 +107,7 @@ int parse_atom(Parser *p, AstNode **node) {
 
 int parse_repeat(Parser *p, AstNode **node) {
     (*node) = malloc(sizeof(AstNode));
+    memset((*node), 0, sizeof(AstNode));
     (*node)->kind = AST_REPEAT;
 
     if (!first_atom(p)) {
@@ -126,9 +130,11 @@ int parse_repeat(Parser *p, AstNode **node) {
 
 int parse_concat(Parser *p, AstNode **node) {
     (*node) = malloc(sizeof(AstNode));
+    memset((*node), 0, sizeof(AstNode));
     (*node)->kind = AST_CONCAT;
     (*node)->concat.count = 0;
     (*node)->concat.repeat = malloc(sizeof(AstNode *) * MAX_CHILD);
+    memset((*node)->concat.repeat, 0, sizeof(AstNode *) * MAX_CHILD);
     do {
         if ((*node)->concat.count >= MAX_CHILD) {
             exit(8);
@@ -146,9 +152,11 @@ int parse_concat(Parser *p, AstNode **node) {
 
 int parse_alt(Parser *p, AstNode **node) {
     (*node) = malloc(sizeof(AstNode));
+    memset((*node), 0, sizeof(AstNode));
     (*node)->kind = AST_ALT;
     (*node)->alt.count = 0;
     (*node)->alt.concat = malloc(sizeof(AstNode *) * MAX_CHILD);
+    memset((*node)->alt.concat, 0, sizeof(AstNode *) * MAX_CHILD);
     do {
         if ((*node)->alt.count >= MAX_CHILD) {
             exit(8);
@@ -167,6 +175,7 @@ int parse_alt(Parser *p, AstNode **node) {
 
 int parse(Parser *p, AstNode **node) {
     (*node) = malloc(sizeof(AstNode));
+    memset(*node, 0, sizeof(AstNode));
     (*node)->kind = AST_REG;
 
     if (!first_alt(p)) {

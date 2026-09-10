@@ -33,6 +33,7 @@ struct AstNode {
         } repeat;
         struct {
             int is_char;
+            int backslash;
             char ch;
             AstNode *alt;
         } atom;

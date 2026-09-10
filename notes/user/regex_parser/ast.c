@@ -77,7 +77,7 @@ int show_ast(AstNode *node, int indent) {
                 printf("  ");
             }
             if (node->atom.is_char) {
-                printf("AST_ATOM(char '%c')\n", node->atom.ch);
+                printf("AST_ATOM(char '%c', backslash '%d')\n", node->atom.ch, node->atom.backslash);
             } else {
                 printf("AST_ATOM(alt)\n");
                 show_ast(node->atom.alt, indent + 1);

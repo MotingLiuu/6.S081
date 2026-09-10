@@ -13,6 +13,27 @@ int lex(const char *src, TokenStream *out) {
                 out->tokens[count].pos = pos;
                 pos++;
                 break;
+            case '\\':
+                src++;
+                switch (*src) {
+                  default:
+                    out->tokens[count].kind = TOK_CHAR;
+                    out->tokens[count].ch = *src;
+                    out->tokens[count].pos = pos;
+                    break;
+                  case '\0':
+                    printf("Error: unknown escape sequence\n");
+                    exit(1);
+                    break;
+                  case '.':
+                    out->tokens[count].kind = TOK_CHAR;
+                    out->tokens[count].ch = *src;
+                    out->tokens[count].backslash = 1;
+                    out->tokens[count].pos = pos;
+                    break;
+                }
+                pos++;
+                break;
             case '|':
                 out->tokens[count].kind = TOK_PIPE;
                 out->tokens[count].ch = *src;
@@ -68,7 +89,7 @@ int free_tokens(TokenStream *ts) {
 
 int show_tokens(const TokenStream *ts) {
     for (int i = 0; i < ts->count; i++) {
-        printf("Type: %d, Pos: %d, Ch: %c\n", ts->tokens[i].kind, ts->tokens[i].pos, ts->tokens[i].ch);
+        printf("Type: %d, Pos: %d, Ch: %c, ba: %d\n", ts->tokens[i].kind, ts->tokens[i].pos, ts->tokens[i].ch, ts->tokens[i].backslash);
     }
     return 0;
 }

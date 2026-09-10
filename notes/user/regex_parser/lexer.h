@@ -17,6 +17,7 @@ typedef enum {
 typedef struct {
     TokenKind kind;
     char ch;
+    int backslash;
     int pos;
 } Token;
 

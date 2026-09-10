@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 int main(int argc, char **argv) {
-    char *s1 = "abc|(a)?b*c?(d|e)f";
+    char *s1 = "abc|(a)?b*c?(d|e)f\\.*";
     TokenStream ts;
     if (lex(s1, &ts) != 0) {
         printf("lex error\n");
@@ -12,5 +12,6 @@ int main(int argc, char **argv) {
         printf("show_tokens error\n");
         return -1;
     }
+
     return 0;
 }

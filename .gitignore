@@ -18,6 +18,7 @@ _*
 *.d
 *.asm
 *.sym
+*.dSYM
 a.out
 core
 

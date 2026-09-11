@@ -79,6 +79,8 @@ int lex(const char *src, TokenStream *out) {
     count++;
     out->count = count;
 
+    // printf("DEBUG: %d \n", show_tokens(out));
+
     return 0;
 }
 
@@ -91,6 +93,7 @@ int show_tokens(const TokenStream *ts) {
     for (int i = 0; i < ts->count; i++) {
         printf("Type: %d, Pos: %d, Ch: %c, ba: %d\n", ts->tokens[i].kind, ts->tokens[i].pos, ts->tokens[i].ch, ts->tokens[i].backslash);
     }
+    printf("\n");
     return 0;
 }
 

@@ -2,13 +2,24 @@
 #include <stdio.h>
 
 int main(int argc, char **argv) {
-    char *s1 = "abc|(a)?b*c?(d|e)f\\.*";
+    char *s1 = "abc|(a)?b*c?(d|e)f\\.*c";
     TokenStream ts;
     if (lex(s1, &ts) != 0) {
         printf("lex error\n");
         return -1;
     }
     if (show_tokens(&ts) != 0) {
+        printf("show_tokens error\n");
+        return -1;
+    }
+
+    char *s2 = ".*\\.c";
+    TokenStream ts2;
+    if (lex(s2, &ts2) != 0) {
+        printf("lex error\n");
+        return -1;
+    }
+    if (show_tokens(&ts2) != 0) {
         printf("show_tokens error\n");
         return -1;
     }

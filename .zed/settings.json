@@ -1,0 +1,7 @@
+{
+    "file_scan_inclusions": [
+        "xv6-labs-2025/kernel",
+        "xv6-labs-2025/user",
+        "xv6-labs-2025/Makefile"
+    ]
+}

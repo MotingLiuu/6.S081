@@ -1471,37 +1471,35 @@ $3 = 0x200000022
 
 SSP is the 8th bit in sstatus, which is `0`. So the previous mode was `S-mode`
 
-## 
+# kernel.ld
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```txt
+                  OUTPUT SECTIONS
+0x80000000 ┌─────────────────────────┐
+           │ .text                   │
+           │                         │
+           │ entry.o:.text           │
+           │ main.o:.text            │
+           │ proc.o:.text            │
+           │ ...                     │
+           │                         │
+page align ├─────────────────────────┤
+           │ trampoline.o:trampsec   │
+           │                         │
+page align ├─────────────────────────┤ ← etext
+           │ .rodata                 │
+           │   *.srodata             │
+           │   *.rodata              │
+           ├─────────────────────────┤
+           │ .data                   │
+           │   *.sdata               │
+           │   *.data                │
+           ├─────────────────────────┤
+           │ .bss                    │
+           │   *.sbss                │
+           │   *.bss                 │
+           ├─────────────────────────┤ ← end
+           │ free physical RAM       │
+           │                         │
+           ▼
+```

@@ -1503,3 +1503,42 @@ page align ├──────────────────────
            │                         │
            ▼
 ```
+
+# Trap
+
+When entering M-mode trap:
+```txt
+进入 M-mode trap:
+
+MPIE <- MIE
+MIE  <- 0
+MPP  <- old privilege
+mepc <- old PC
+```
+
+When entering S-mode trap:
+```txt
+进入 S-mode trap:
+
+SPIE <- SIE
+SIE  <- 0
+SPP  <- old privilege
+sepc <- old PC
+```
+
+We can set SIE or MIE to 1 in handler to enable nested trap. 
+
+----
+
+
+A trap can be either:
+    * An interrupt: a asynchoronous timer interrupt...
+    * An exception: a synchronous event caused by the current instruction.
+
+M-mode trap describes the mode where the trap is handled. 
+1. Whether a trap from S/U goes M-mode depends on delegation. If it is not delegated it is handled in M-mode. In `start.c` `w_medeleg(0xffff)` and `w_mideleg(0xffff)` delegate many exception and interrupt causes to S-mode.
+2. A trap that occurs while already in M-mode is handled in M-mode.
+
+
+
+

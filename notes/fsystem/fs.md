@@ -10,21 +10,21 @@ on-disk structure and the disk layout itself.
 Both the kernel and `mkfs` use this header, so anything added here must
 stay in sync with the on-disk image that `mkfs` produces.
 
+----
 ## Disk layout
 
 | Block(s)   | Contents                                                       |
 | ---------- | -------------------------------------------------------------- |
-| 0          | boot block — first 1024 bytes; QEMU loads the ELF kernel from here |
+| 0          | boot block — first 1024 bytes; (all bytes are 0 in xv6)
 | 1          | super block — describes the rest of the layout                 |
-| 2 …        | log blocks (write-ahead log for crash safety)                  |
-|            | inode blocks — array of `struct dinode`                         |
-|            | free bit map — one bit per data block, 1 = free                 |
-|            | data blocks — file / directory contents                        |
+| 2-32       | log blocks (write-ahead log for crash safety)                  |
+| 33-45            | inode blocks — array of `struct dinode`                         |
+| 46            | free bit map — one bit per data block, 1 = free                 |
+| 47-1999            | data blocks — file / directory contents                        |
 
-> The boot block is just the ELF image of the kernel — QEMU `-kernel`
-> loads it into memory and jumps to its entry point. It is *not* parsed
-> as a file system structure; the file system proper starts at the
-> super block.
+The sepcific block number is decided by mkfs.c
+
+----
 
 ## Constants
 
@@ -40,11 +40,10 @@ stay in sync with the on-disk image that `mkfs` produces.
 | `IPB`       | `BSIZE / sizeof(struct dinode)` | Inodes packed per block                          |
 | `BPB`       | `BSIZE * 8` = 8192 | Bitmap bits per block                                    |
 
-## `struct superblock`
+## SuperBlock
 
 Describes the disk layout. `mkfs` computes it and writes it to block 1;
-the kernel keeps one copy in memory (`kernel/fs.c`'s `sb`) and trusts
-`FSMAGIC` to decide whether the image looks like an xv6 file system.
+the kernel keeps one copy in memory (`kernel/fs.c`'s `sb`)
 
 ```c
 struct superblock {
@@ -59,14 +58,17 @@ struct superblock {
 };
 ```
 
-Layout math (per the `mkfs` algorithm):
+----
 
-```
-logstart    = 2
-inodestart  = logstart + nlog
-bmapstart   = inodestart + ninodes / IPB
-datastart   = bmapstart + nblocks / BPB
-```
+## Log
+
+Log：用于崩溃恢复
+文件系统操作可能同时修改多个块。例如创建文件，可能需要修改 inode、目录数据和 bitmap。
+日志让这些更新以事务方式提交；如果更新期间发生崩溃，启动时可以通过日志恢复，避免只完成了一部分更新而破坏文件系统结构。
+
+Question: what does this mean? Answer after reading fs.
+
+----
 
 ## `struct dinode` — on-disk inode
 

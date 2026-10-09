@@ -1,4 +1,12 @@
-# `kernel/fs.h` — On-disk file system format
+# Quesitons
+
+## Buffer cache layer
+
+1. Question: what does buf's valid mean? Does it mean it's data has read from block?
+Answer: this means the data is up to date.
+
+
+## `kernel/fs.h` — On-disk file system format
 
 This header is shared by the kernel *and* user programs. It defines every
 on-disk structure and the disk layout itself.
@@ -105,23 +113,6 @@ is passed through for the driver to interpret. Created with
 How many directory entries point at this inode. The kernel refuses to
 free an inode while `nlink > 0`.
 
-## Inode / block location macros
-
-These turn logical numbers into on-disk block numbers using the
-in-memory super block.
-
-```c
-#define IPB           (BSIZE / sizeof(struct dinode))
-#define IBLOCK(i, sb) ((i) / IPB + sb.inodestart)
-
-#define BPB           (BSIZE * 8)
-#define BBLOCK(b, sb) ((b) / BPB + sb.bmapstart)
-```
-
-- `IBLOCK(i, sb)` — block that holds inode `i`.
-- `BBLOCK(b, sb)` — which bitmap block tracks data block `b`. Each
-  bitmap block covers `BPB = 8192` data blocks, so this only changes
-  every 8192 blocks.
 
 ## `struct dirent` — directory entry
 

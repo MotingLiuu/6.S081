@@ -28,29 +28,15 @@ static inline void spin_unlock(spinlock_t *lock)
 }
 
 static inline void w_lock(rwlock_t *lock) {
-    while (__atomic_exchange_n(&lock->wlocked, 1, __ATOMIC_ACQUIRE))
-        ;
-    int expected = 0;
-    while (__atomic_compare_exchange_n(&lock->rcount, &expected, -1, 1, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE))
-        ;
 }
 
 static inline void r_lock(rwlock_t *lock) {
-    while (__atomic_load_n(&lock->wlocked, __ATOMIC_ACQUIRE) == 1)
-        ;
-    int curreader;
-    while ((curreader = __atomic_exchange_n(&lock->rcount, -1, __ATOMIC_ACQUIRE)) == -1)
-        ;
-    __atomic_exchange_n(&lock->rcount, curreader + 1, __ATOMIC_ACQUIRE);
 }
 
 static inline void w_unlock(rwlock_t *lock) {
-    __atomic_store_n(&lock->wlocked, 0, __ATOMIC_RELEASE);
-    __atomic_store_n(&lock->rcount, 0, __ATOMIC_RELEASE);
 }
 
 static inline void r_unlock(rwlock_t *lock) {
-    __atomic_fetch_sub(&lock->rcount, 1, __ATOMIC_RELEASE);
 }
 
 #endif

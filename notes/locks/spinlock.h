@@ -7,10 +7,11 @@ typedef struct {
 
 typedef struct {
     int state;
+    int writer;
 } rwlock_t;
 
 #define SPINLOCK_INITIALIZER { .locked = 0 }
-#define RWLOCK_INITIALIZE { .state = 0}
+#define RWLOCK_INITIALIZE { .state = 0, .writer = 0}
 
 static inline void spin_lock(spinlock_t *lock)
 {
@@ -29,7 +30,7 @@ static inline void spin_unlock(spinlock_t *lock)
 static inline void r_lock(rwlock_t *lock) {
     while (1) {
         int state = __atomic_load_n(&lock->state, __ATOMIC_ACQUIRE);
-        if (state == -1) {
+        if (state == -1 || lock->writer > 0) {
             continue;
         }
         int expected = state;
@@ -40,11 +41,8 @@ static inline void r_lock(rwlock_t *lock) {
 }
 
 static inline void w_lock(rwlock_t *lock) {
+    __atomic_fetch_add(&lock->writer, 1, __ATOMIC_ACQ_REL);
     while (1) {
-        int state = __atomic_load_n(&lock->state, __ATOMIC_ACQUIRE);
-        if (state != 0) {
-            continue;
-        }
         int expected = 0;
         if (__atomic_compare_exchange_n(&lock->state, &expected, -1, 1, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
             break;
@@ -53,6 +51,7 @@ static inline void w_lock(rwlock_t *lock) {
 }
 
 static inline void w_unlock(rwlock_t *lock) {
+    __atomic_fetch_sub(&lock->writer, 1, __ATOMIC_ACQ_REL);
     __atomic_store_n(&lock->state, 0, __ATOMIC_RELEASE);
 }
 

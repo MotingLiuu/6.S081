@@ -30,7 +30,8 @@ static inline void spin_unlock(spinlock_t *lock)
 static inline void r_lock(rwlock_t *lock) {
     while (1) {
         int state = __atomic_load_n(&lock->state, __ATOMIC_ACQUIRE);
-        if (state == -1 || lock->writer > 0) {
+        int writers = __atomic_load_n(&lock->writer, __ATOMIC_ACQUIRE);
+        if (state == -1 || writers > 0) {
             continue;
         }
         int expected = state;

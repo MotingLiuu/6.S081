@@ -6,12 +6,11 @@ typedef struct {
 } spinlock_t;
 
 typedef struct {
-    int wlocked;
-    int rcount;
+    int state;
 } rwlock_t;
 
 #define SPINLOCK_INITIALIZER { .locked = 0 }
-#define RWLOCK_INITIALIZE { .wlocked = 0, .rcount = 0}
+#define RWLOCK_INITIALIZE { .state = 0}
 
 static inline void spin_lock(spinlock_t *lock)
 {
@@ -27,16 +26,38 @@ static inline void spin_unlock(spinlock_t *lock)
     __atomic_store_n(&lock->locked, 0, __ATOMIC_RELEASE);
 }
 
-static inline void w_lock(rwlock_t *lock) {
+static inline void r_lock(rwlock_t *lock) {
+    while (1) {
+        int state = __atomic_load_n(&lock->state, __ATOMIC_ACQUIRE);
+        if (state == -1) {
+            continue;
+        }
+        int expected = state;
+        if (__atomic_compare_exchange_n(&lock->state, &expected, expected + 1, 1, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
+            break;
+        }
+    }
 }
 
-static inline void r_lock(rwlock_t *lock) {
+static inline void w_lock(rwlock_t *lock) {
+    while (1) {
+        int state = __atomic_load_n(&lock->state, __ATOMIC_ACQUIRE);
+        if (state != 0) {
+            continue;
+        }
+        int expected = 0;
+        if (__atomic_compare_exchange_n(&lock->state, &expected, -1, 1, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
+            break;
+        }
+    }
 }
 
 static inline void w_unlock(rwlock_t *lock) {
+    __atomic_store_n(&lock->state, 0, __ATOMIC_RELEASE);
 }
 
 static inline void r_unlock(rwlock_t *lock) {
+    __atomic_fetch_sub(&lock->state, 1, __ATOMIC_RELEASE);
 }
 
 #endif

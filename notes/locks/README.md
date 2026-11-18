@@ -3,7 +3,7 @@
 用同一组 pthread 读写任务测试 `spinlock.h` 中的两种锁。
 
 ```sh
-cc -std=c11 -O2 -Wall -Wextra -Wpedantic -pthread main.c -o spinlock_demo
+cc -std=c11 -O2 -Wall -Wextra -Wpedantic -pthread main.c rwlock.c -o spinlock_demo
 ./spinlock_demo           # 依次运行 spinlock、rwlock
 ./spinlock_demo spinlock  # 单独运行 spinlock
 ./spinlock_demo rwlock    # 单独运行 rwlock
@@ -19,3 +19,9 @@ cc -std=c11 -O2 -Wall -Wextra -Wpedantic -pthread main.c -o spinlock_demo
 - 每轮最多等待 5 秒。超时退出码为 124，该轮无法得到完整耗时。
 
 Spinlock 用同一把独占锁保护读写。读写锁的预期行为是允许多个读者同时进入，并让写者独占。测试对共享字段使用 relaxed 原子访问，以便在待测锁行为异常时仍能执行检查。测试通过仅表示本轮观察到了预期结果。
+
+## Linux 混合读写锁
+
+无竞争时，线程用用户态原子操作获取和释放锁。等待锁时，线程先做有限次数的自旋，再进入进程内 Futex 等待。锁状态和 Futex 等待使用同一个 32 位字，状态变化时内核会拒绝按旧值休眠。读者和写者使用不同的等待掩码，最后一个读者离开时唤醒一个排队写者，写者释放时优先唤醒一个排队写者，没有排队写者时唤醒休眠的读者。
+
+写者登记后会阻止新读者进入。写者之间没有 FIFO 顺序，持续有写者排队时读者可能饥饿。锁适用于同一进程中的线程，要求持有者配对解锁，支持最多 65,535 个持锁读者和 16,383 个排队写者，超出计数上限会终止进程。使用 `RWLOCK_INITIALIZE` 初始化，确保所有使用者均已返回后再销毁或复用锁。macOS 等其他平台使用系统的 `pthread_rwlock`，调度策略由系统决定。

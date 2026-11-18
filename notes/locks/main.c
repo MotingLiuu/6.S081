@@ -187,6 +187,7 @@ static int run_benchmark(int use_rwlock, unsigned int read_work)
 
     struct timespec end = now();
     alarm(0);
+    rwlock_destroy(&benchmark.rwlock);
     check_pthread(pthread_cond_destroy(&benchmark.start_cond), "pthread_cond_destroy");
     check_pthread(pthread_mutex_destroy(&benchmark.start_mutex), "pthread_mutex_destroy");
 

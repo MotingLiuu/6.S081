@@ -5,13 +5,7 @@ typedef struct {
     int locked;
 } spinlock_t;
 
-typedef struct {
-    int state;
-    int writer;
-} rwlock_t;
-
 #define SPINLOCK_INITIALIZER { .locked = 0 }
-#define RWLOCK_INITIALIZE { .state = 0, .writer = 0}
 
 static inline void spin_lock(spinlock_t *lock)
 {
@@ -27,37 +21,28 @@ static inline void spin_unlock(spinlock_t *lock)
     __atomic_store_n(&lock->locked, 0, __ATOMIC_RELEASE);
 }
 
-static inline void r_lock(rwlock_t *lock) {
-    while (1) {
-        int state = __atomic_load_n(&lock->state, __ATOMIC_ACQUIRE);
-        int writers = __atomic_load_n(&lock->writer, __ATOMIC_ACQUIRE);
-        if (state == -1 || writers > 0) {
-            continue;
-        }
-        int expected = state;
-        if (__atomic_compare_exchange_n(&lock->state, &expected, expected + 1, 1, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
-            break;
-        }
-    }
-}
+#ifdef __linux__
+#include <stdint.h>
 
-static inline void w_lock(rwlock_t *lock) {
-    __atomic_fetch_add(&lock->writer, 1, __ATOMIC_ACQ_REL);
-    while (1) {
-        int expected = 0;
-        if (__atomic_compare_exchange_n(&lock->state, &expected, -1, 1, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
-            break;
-        }
-    }
-}
+typedef struct {
+    _Alignas(4) uint32_t state;
+} rwlock_t;
 
-static inline void w_unlock(rwlock_t *lock) {
-    __atomic_fetch_sub(&lock->writer, 1, __ATOMIC_ACQ_REL);
-    __atomic_store_n(&lock->state, 0, __ATOMIC_RELEASE);
-}
+#define RWLOCK_INITIALIZE { .state = 0 }
+#else
+#include <pthread.h>
 
-static inline void r_unlock(rwlock_t *lock) {
-    __atomic_fetch_sub(&lock->state, 1, __ATOMIC_RELEASE);
-}
+typedef pthread_rwlock_t rwlock_t;
+
+#define RWLOCK_INITIALIZE PTHREAD_RWLOCK_INITIALIZER
+#endif
+
+void r_lock(rwlock_t *lock);
+void w_lock(rwlock_t *lock);
+void r_unlock(rwlock_t *lock);
+void w_unlock(rwlock_t *lock);
+
+/* Call only after all users, including waiters, have left the lock. */
+void rwlock_destroy(rwlock_t *lock);
 
 #endif

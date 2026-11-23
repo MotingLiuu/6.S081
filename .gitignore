@@ -41,7 +41,7 @@ compile_commands.json
 .idea/
 
 .commandcode/
-mnote/
+mnote
 
 xv6-labs-2025/
 xv6-labs-2025-backup/

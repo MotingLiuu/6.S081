@@ -1,0 +1,264 @@
+#include <stdint.h>
+#include <stddef.h>
+#include "console.h"
+#include "mmio.h"
+#include "pci.h"
+#include "trap.h"
+#include "tulip.h"
+
+#define MAX_DEV 32
+
+static const char *class_name(uint8_t cls)
+{
+    switch (cls) {
+    case 0x00: return "old device";
+    case 0x01: return "mass storage";
+    case 0x02: return "network";
+    case 0x03: return "display";
+    case 0x06: return "bridge";
+    default:   return "unknown";
+    }
+}
+
+static int ilog2(uint64_t v)
+{
+    int n = 0;
+
+    while (v > 1) {
+        v >>= 1;
+        n++;
+    }
+    return n;
+}
+
+static void print_header(const struct pci_device *d)
+{
+    struct pci_addr a = d->addr;
+
+    kprintf("\n  [%02x:%02x.%x] vendor=%04x device=%04x  %s (class %02x:%02x)\n",
+            a.bus, a.dev, a.func, d->vendor, d->device,
+            class_name(d->class_code), d->class_code, d->subclass);
+
+    /* 32 位读配置空间，自己拆成字节 */
+    uint8_t raw[64];
+    for (int i = 0; i < 64; i += 4) {
+        uint32_t v = pci_read32(a.bus, a.dev, a.func, i);
+        raw[i + 0] = v;
+        raw[i + 1] = v >> 8;
+        raw[i + 2] = v >> 16;
+        raw[i + 3] = v >> 24;
+    }
+    kprintf("    配置空间前 64 字节:\n");
+    hexdump(raw, 64);
+}
+
+static void print_bars(const struct pci_device *d)
+{
+    for (int i = 0; i < 6; i++) {
+        uint32_t raw = d->bar[i];
+        uint64_t size = d->bar_size[i];
+
+        if (raw == 0 && size == 0)
+            continue;
+
+        if (raw & 1)
+            kprintf("    BAR%d: I/O  原始值=%08x  大小=%lu 字节\n", i, raw, size);
+        else
+            kprintf("    BAR%d: MEM  原始值=%08x  大小=%lu 字节 (2^%d)\n",
+                    i, raw, size, size ? ilog2(size) : 0);
+    }
+}
+
+/*
+ * 实验 1：读配置空间。
+ * 这一步不需要给设备分配任何地址，因为配置空间本身在固定的 ECAM 窗口里。
+ */
+static void demo_config_space(struct pci_device *devs, int n)
+{
+    kprintf("=========================================================\n");
+    kprintf(" 实验 1：配置空间是什么\n");
+    kprintf("=========================================================\n");
+    kprintf("配置空间 = 每个 PCIe 设备都自带的一张 4 KiB 登记表。\n");
+    kprintf("在 QEMU virt 上它被映射到物理地址 %p，叫 ECAM。\n",
+            (void *)PCI_ECAM_BASE);
+    kprintf("  ECAM + (bus<<20) + (dev<<15) + (func<<12) + offset\n");
+    kprintf("表里写着：厂商 ID、设备 ID、设备类型、以及 6 个 BAR。\n");
+
+    for (int i = 0; i < n; i++)
+        print_header(&devs[i]);
+}
+
+/*
+ * 实验 2：BAR 探测。
+ * 设备自己不知道应该占用哪段物理地址 —— 那是系统软件决定的。
+ * BAR 就是设备身上"我要一段地址"的可写寄存器。
+ */
+static void demo_bar_probe(struct pci_device *devs, int n)
+{
+    kprintf("\n=========================================================\n");
+    kprintf(" 实验 2：BAR 是什么（此时还没分配地址）\n");
+    kprintf("=========================================================\n");
+
+    for (int i = 0; i < n; i++)
+        print_bars(&devs[i]);
+
+    kprintf("\n『原始值』就是 BAR 寄存器现在的完整内容。\n");
+    kprintf("低 4 位是标志（1=I/O, 2=64 位地址），其余是地址。\n");
+    kprintf("『大小』是往 BAR 写全 1 再读回来算出来的，见 pci.c。\n");
+}
+
+static void demo_mmio_window(struct pci_device *devs, int n)
+{
+    kprintf("\n=========================================================\n");
+    kprintf(" 实验 3：PCIe MMIO 窗口 + 给 BAR 分配地址\n");
+    kprintf("=========================================================\n");
+    kprintf("MMIO 窗口 = 一段专门留给 PCIe 设备的物理地址：%p - %p。\n",
+            (void *)PCI_MMIO_BASE, (void *)PCI_MMIO_END);
+    kprintf("CPU 读写这个范围，PCIe 控制器会把访问转成 PCIe 事务发出去。\n\n");
+
+    uint64_t next = PCI_MMIO_BASE;
+
+    for (int i = 0; i < n; i++) {
+        struct pci_device *d = &devs[i];
+
+        for (int b = 0; b < 6; b++) {
+            uint32_t raw = d->bar[b];
+            uint64_t size = d->bar_size[b];
+
+            if (size == 0)
+                continue;
+            if (raw & 1) {
+                kprintf("  [%02x:%02x.%x] BAR%d 是 I/O BAR，本实验跳过\n",
+                        d->addr.bus, d->addr.dev, d->addr.func, b);
+                continue;
+            }
+
+            /* 地址必须按大小对齐 */
+            next = (next + size - 1) & ~(size - 1);
+
+            /* 保留低 4 位标志，只替换地址部分 */
+            uint32_t value = (uint32_t)next | (raw & 0xf);
+            pci_write32(d->addr.bus, d->addr.dev, d->addr.func,
+                        PCI_BAR0 + b * 4, value);
+
+            /* 读回验证，确认设备真的记住了 */
+            uint32_t check = pci_read32(d->addr.bus, d->addr.dev,
+                                        d->addr.func, PCI_BAR0 + b * 4);
+
+            kprintf("  [%02x:%02x.%x] BAR%d: 分配 %p -> 读回 %08x  %s\n",
+                    d->addr.bus, d->addr.dev, d->addr.func, b,
+                    (void *)next, check, check == value ? "OK" : "失败");
+
+            d->bar_addr[b] = next;
+            next += size;
+        }
+    }
+
+    /*
+     * Command 寄存器 bit0/bit1 是地址译码开关。
+     * 就算 BAR 里写了地址，不开这两位设备也不会应答。
+     */
+    kprintf("\n地址写进 BAR 还不够，还要打开 Command 寄存器的译码位：\n");
+    for (int i = 0; i < n; i++) {
+        struct pci_device *d = &devs[i];
+        if (d->vendor != 0x1011)
+            continue;
+
+        uint16_t cmd = pci_read16(d->addr.bus, d->addr.dev, d->addr.func,
+                                  PCI_COMMAND);
+        kprintf("  [%02x:%02x.%x] Command=%04x  I/O=%d  MMIO=%d  总线主控=%d\n",
+                d->addr.bus, d->addr.dev, d->addr.func, cmd,
+                !!(cmd & PCI_CMD_IO_SPACE), !!(cmd & PCI_CMD_MEM_SPACE),
+                !!(cmd & PCI_CMD_BUS_MASTER));
+
+        pci_write16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND,
+                    cmd | PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE |
+                        PCI_CMD_BUS_MASTER);
+
+        cmd = pci_read16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND);
+        kprintf("  写入后 Command=%04x，网卡从现在开始应答 MMIO 访问。\n", cmd);
+    }
+}
+
+static void demo_tulip(struct pci_device *devs, int n)
+{
+    uint32_t base = 0;
+
+    for (int i = 0; i < n; i++)
+        if (devs[i].vendor == 0x1011 && devs[i].bar_addr[1])
+            base = (uint32_t)devs[i].bar_addr[1];
+
+    kprintf("\n=========================================================\n");
+    kprintf(" 实验 4：通过 MMIO 读 Tulip 网卡寄存器\n");
+    kprintf("=========================================================\n");
+
+    if (!base) {
+        kprintf("没找到可用的 Tulip 内存 BAR。\n");
+        return;
+    }
+
+    kprintf("Tulip 的 CSR 寄存器块现在在 %p。\n", (void *)(uint64_t)base);
+    kprintf("每个 CSR 间隔 8 字节，CSR5 就在 base+0x28。\n\n");
+
+    uint32_t csr5 = tulip_read(base, 5);
+    kprintf("  CSR5 (状态)     = %08x\n", csr5);
+
+    uint32_t csr6 = tulip_read(base, 6);
+    kprintf("  CSR6 (操作模式) = %08x\n", csr6);
+
+    kprintf("  CSR7 (中断屏蔽) = %08x\n", tulip_read(base, 7));
+
+    kprintf("\n往 CSR6 的 bit13 (ST, 启动发送) 写 1，再读回来：\n");
+    tulip_write(base, 6, csr6 | (1u << 13));
+    uint32_t after = tulip_read(base, 6);
+    kprintf("  CSR6 = %08x  (原来 %08x，差异 %08x)\n", after, csr6, after ^ csr6);
+    kprintf("写进去的位被硬件保存了下来 —— 这就是 MMIO 写。\n");
+}
+
+static void demo_negative(void)
+{
+    uint32_t v;
+
+    kprintf("\n=========================================================\n");
+    kprintf(" 实验 5：访问没有被任何设备认领的地址\n");
+    kprintf("=========================================================\n");
+
+    if (try_read32(0x80000000UL, &v) == 0)
+        kprintf("  读 RAM   0x80000000 -> %08x\n", v);
+
+    if (try_read32(0x00000000UL, &v) != 0)
+        kprintf("  读       0x00000000 -> access fault（这段地址不存在）\n");
+
+    /*
+     * 0x50000000 在 PCIe MMIO 窗口里，但没有任何设备的 BAR 覆盖它。
+     * 这种访问不会 fault，而是由 PCIe 控制器返回 0xffffffff
+     * （它替没人应答的设备做了答复）。
+     */
+    if (try_read32(0x50000000UL, &v) == 0)
+        kprintf("  读       0x50000000 -> %08x（窗口内，但没有设备认领）\n", v);
+
+    kprintf("\n对比：窗口外的地址会直接 fault，窗口内没人认领的地址读到全 1。\n");
+}
+
+void main(void)
+{
+    static struct pci_device devs[MAX_DEV];
+
+    trap_init();
+
+    kprintf("\n");
+    kprintf("########## PCIe / 配置空间 / BAR 教学实验 ##########\n");
+    kprintf("QEMU -M virt + tulip 网卡\n\n");
+
+    int n = pci_scan(devs, MAX_DEV);
+    kprintf("扫描完成：找到 %d 个 PCIe 设备/功能\n", n);
+
+    demo_config_space(devs, n);
+    demo_bar_probe(devs, n);
+    demo_mmio_window(devs, n);
+    demo_tulip(devs, n);
+    demo_negative();
+
+    kprintf("\n########## 实验结束 ##########\n");
+    kprintf("在 run 模式下按 Ctrl-A X 退出 QEMU\n");
+}

@@ -1,28 +1,43 @@
-# OS / editor cruft
+# C 编译中间文件与依赖文件
+*.o
+*.obj
+*.lo
+*.slo
+*.d
+*.i
+*.s
+*.bc
+
+# 库文件与可执行/调试产物
+*.a
+*.la
+*.lai
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.app
+*.pdb
+*.ilk
+*.map
+*.lst
+*.asm
+vgcore.*
+
+# 构建目录与 C/C++ 工具链缓存（clangd / CMake / xmake）
+build/
+cmake-build-*/
+.cache/
+.xmake/
+compile_commands.json
+
+# 系统与编辑器临时文件
 .DS_Store
-Thumbs.db
-*~
-_*
 *.swp
 *.swo
+*~
 .vscode/
 .idea/
-*.iml
-.TAGS
-
-*.bk
-*.img
-
-# C build artifacts (notes experiments, scratch builds)
-*.o
-*.d
-*.asm
-*.sym
-*.dSYM
-a.out
-core
 
 
-# folder
-xv6-labs-2025-backup/
-xv6-labs-2025/

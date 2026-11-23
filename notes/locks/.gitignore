@@ -1,0 +1,29 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*~
+_*
+*.swp
+*.swo
+.vscode/
+.idea/
+*.iml
+.TAGS
+
+*.bk
+*.img
+
+# C build artifacts (notes experiments, scratch builds)
+*.o
+*.d
+*.asm
+*.sym
+*.dSYM
+a.out
+core
+
+
+# folder
+xv6-labs-2025-backup/
+xv6-labs-2025/
+.commancode/

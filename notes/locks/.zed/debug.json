@@ -1,0 +1,17 @@
+[
+  {
+    "label": "xv6 kernel - QEMU",
+    "adapter": "CodeLLDB",
+    "request": "attach",
+
+    "targetCreateCommands": [
+      "target create \"$ZED_WORKTREE_ROOT/xv6-labs-2025/kernel/kernel\""
+    ],
+
+    "processCreateCommands": [
+      "gdb-remote 127.0.0.1:25501"
+    ],
+
+    "stopOnEntry": true
+  }
+]

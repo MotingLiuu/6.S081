@@ -99,8 +99,10 @@ static void demo_bar_probe(struct pci_device *devs, int n)
     kprintf(" 实验 2：BAR 是什么（此时还没分配地址）\n");
     kprintf("=========================================================\n");
 
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < n; i++) {
+        kprintf("devs %d\n", i);
         print_bars(&devs[i]);
+    }
 
     kprintf("\n『原始值』就是 BAR 寄存器现在的完整内容。\n");
     kprintf("低 4 位是标志（1=I/O, 2=64 位地址），其余是地址。\n");
@@ -135,6 +137,8 @@ static void demo_mmio_window(struct pci_device *devs, int n)
 
             /* 地址必须按大小对齐 */
             next = (next + size - 1) & ~(size - 1);
+            // note
+            // 对其到 size 的整数倍
 
             /* 保留低 4 位标志，只替换地址部分 */
             uint32_t value = (uint32_t)next | (raw & 0xf);
@@ -174,6 +178,10 @@ static void demo_mmio_window(struct pci_device *devs, int n)
         pci_write16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND,
                     cmd | PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE |
                         PCI_CMD_BUS_MASTER);
+        // note:
+        // IO_SPACE (1 << 0) 设备响应针对于其 I/O BAR 的访问
+        // Memory Space Enable 设备响应对于其 Memory BAR 的访问
+        // Bus Mater Enable 允许设备主动发起 PCI transaction, DMA etc
 
         cmd = pci_read16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND);
         kprintf("  写入后 Command=%04x，网卡从现在开始应答 MMIO 访问。\n", cmd);

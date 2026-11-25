@@ -39,12 +39,15 @@ struct pci_addr {
 
 struct pci_device {
     struct pci_addr addr;
+    // addr is bus, dev, func
     uint16_t vendor, device;
     uint16_t command, status;
     uint8_t class_code, subclass, prog_if, header_type;
     uint8_t irq_line, irq_pin;
 
     uint32_t bar[6];        /* BAR 寄存器的原始内容 */
+    // note
+    // 上述所有 var 共 40bytes
     uint64_t bar_size[6];   /* 探测出来的窗口大小 */
     uint64_t bar_addr[6];   /* 我们分配给它的物理地址，0 = 未分配 */
 };

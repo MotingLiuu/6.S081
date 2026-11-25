@@ -223,12 +223,182 @@ static void demo_tulip(struct pci_device *devs, int n)
     kprintf("写进去的位被硬件保存了下来 —— 这就是 MMIO 写。\n");
 }
 
+/* ---- 实验 5 用的小工具：裸机没有 libc，字节序/拷贝都手写 ---- */
+
+static void put_be16(uint8_t *p, uint16_t v)
+{
+    p[0] = (uint8_t)(v >> 8);
+    p[1] = (uint8_t)v;
+}
+
+static uint16_t get_be16(const uint8_t *p)
+{
+    return (uint16_t)((p[0] << 8) | p[1]);
+}
+
+static void copy_bytes(uint8_t *dst, const uint8_t *src, int n)
+{
+    while (n-- > 0)
+        *dst++ = *src++;
+}
+
+static void zero_bytes(uint8_t *p, int n)
+{
+    while (n-- > 0)
+        *p++ = 0;
+}
+
+static void print_mac(const uint8_t *m)
+{
+    kprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+            m[0], m[1], m[2], m[3], m[4], m[5]);
+}
+
+static void print_ip(const uint8_t *p)
+{
+    kprintf("%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
+}
+
+static void print_eth_frame(const uint8_t *f, int len)
+{
+    uint16_t type;
+
+    if (len < 14) {
+        kprintf("  帧太短（%d 字节）\n", len);
+        return;
+    }
+
+    kprintf("  目的 MAC  ");
+    print_mac(f + 0);
+    kprintf("\n  源   MAC  ");
+    print_mac(f + 6);
+
+    type = get_be16(f + 12);
+    kprintf("\n  EtherType %04x", type);
+    if (type == 0x0806)
+        kprintf(" (ARP)");
+    else if (type == 0x0800)
+        kprintf(" (IPv4)");
+    kprintf("\n");
+
+    if (type == 0x0806 && len >= 42) {
+        uint16_t op = get_be16(f + 20);
+
+        kprintf("  ARP %s\n",
+                op == 1 ? "request" : op == 2 ? "reply" : "?");
+        kprintf("  发送方    ");
+        print_mac(f + 22);
+        kprintf("  ");
+        print_ip(f + 28);
+        kprintf("\n  目标      ");
+        print_mac(f + 32);
+        kprintf("  ");
+        print_ip(f + 38);
+        kprintf("\n");
+    }
+}
+
+/*
+ * 构造一个广播 ARP 请求：
+ *   谁有 10.0.2.2（QEMU user-mode 网络的网关）？请告诉 10.0.2.15。
+ * 源 MAC 必须和 QEMU -device tulip,mac=... 里的一致。
+ */
+static int build_arp_request(uint8_t *f)
+{
+    static const uint8_t mac[6] = TULIP_MAC_BYTES;
+    static const uint8_t bcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    static const uint8_t spa[4] = {10, 0, 2, 15};
+    static const uint8_t tpa[4] = {10, 0, 2, 2};
+
+    zero_bytes(f, 60);                  /* 以太网最短帧 60 字节（不含 FCS） */
+
+    copy_bytes(f + 0, bcast, 6);        /* 目的：广播 */
+    copy_bytes(f + 6, mac, 6);          /* 源：我们的 MAC */
+    put_be16(f + 12, 0x0806);           /* EtherType: ARP */
+
+    put_be16(f + 14, 0x0001);           /* ARP htype: Ethernet */
+    put_be16(f + 16, 0x0800);           /* ARP ptype: IPv4 */
+    f[18] = 6;                          /* hlen */
+    f[19] = 4;                          /* plen */
+    put_be16(f + 20, 0x0001);           /* op: request */
+    copy_bytes(f + 22, mac, 6);         /* sender MAC */
+    copy_bytes(f + 28, spa, 4);         /* sender IP 10.0.2.15 */
+    copy_bytes(f + 38, tpa, 4);         /* target IP 10.0.2.2 */
+
+    return 60;
+}
+
+static void demo_network(struct pci_device *devs, int n)
+{
+    uint8_t frame[60];
+    uint8_t rx[2048];
+    uint32_t base = 0;
+    int len;
+
+    for (int i = 0; i < n; i++)
+        if (devs[i].vendor == 0x1011 && devs[i].bar_addr[1])
+            base = (uint32_t)devs[i].bar_addr[1];
+
+    kprintf("\n=========================================================\n");
+    kprintf(" 实验 5：DMA 环形队列 + 真实的 ARP 收发\n");
+    kprintf("=========================================================\n");
+
+    if (!base) {
+        kprintf("没找到可用的 Tulip 内存 BAR。\n");
+        return;
+    }
+
+    kprintf("Tulip 从外到内有三层：\n");
+    kprintf("  PCI 配置空间 -> BAR -> CSR 寄存器 -> 描述符环 -> 帧缓冲区\n\n");
+    kprintf("控制路径（CPU 主动）：CSR3/CSR4 告诉网卡环在哪，\n");
+    kprintf("                      CSR6 的 SR/ST 开收/发，CSR1 踢发送。\n");
+    kprintf("数据路径（网卡主动）：网卡按描述符里的物理地址自己 DMA 读写，\n");
+    kprintf("                      描述符的 OWN 位就是双方交接缓冲区的标志。\n\n");
+
+    tulip_init(base);
+
+    kprintf("[初始化后] RX 的 4 个描述符全是 OWN=1，等网卡填入；TX 全空闲\n");
+    tulip_dump();
+
+    len = build_arp_request(frame);
+    kprintf("\n[发送] 广播 ARP：谁有 10.0.2.2？请告诉 10.0.2.15\n");
+    if (tulip_send_frame(frame, len) != 0) {
+        kprintf("发送失败（TX 描述符一直没被网卡归还）\n");
+        return;
+    }
+    kprintf("[发送后] 网卡已经把 TX 描述符的 OWN 清 0\n");
+
+    /*
+     * 在 QEMU user-mode 网络里，网关 10.0.2.2 会回答 ARP。
+     * 应答是网卡通过 DMA 直接写进 RX 缓冲区的，CPU 只看 OWN。
+     */
+    for (int spin = 0; spin < 10000000; spin++) {
+        len = tulip_recv_frame(rx, sizeof(rx));
+        if (len >= 0)
+            break;
+    }
+
+    if (len < 0) {
+        kprintf("没收到 ARP 应答（检查 QEMU 启动参数里的网络后端）\n");
+        return;
+    }
+
+    kprintf("\n[接收] 收到 %d 字节，DMA 已经把帧放进内存:\n", len);
+    hexdump(rx, len);
+    print_eth_frame(rx, len);
+
+    kprintf("\n[重新挂好 RX 描述符]\n");
+    tulip_dump();
+    kprintf("  TU=1 是 TX 环已空的正常状态，RI=1 是刚收到帧；\n");
+    kprintf("  这两个位写 1 可清除，本驱动轮询时不依赖它们。\n");
+}
+
 static void demo_negative(void)
 {
     uint32_t v;
 
     kprintf("\n=========================================================\n");
-    kprintf(" 实验 5：访问没有被任何设备认领的地址\n");
+    kprintf(" 实验 6：访问没有被任何设备认领的地址\n");
     kprintf("=========================================================\n");
 
     if (try_read32(0x80000000UL, &v) == 0)
@@ -265,6 +435,7 @@ void main(void)
     demo_bar_probe(devs, n);
     demo_mmio_window(devs, n);
     demo_tulip(devs, n);
+    demo_network(devs, n);
     demo_negative();
 
     kprintf("\n########## 实验结束 ##########\n");

@@ -22,7 +22,8 @@ pcie.bin: pcie.elf
 
 run: pcie.bin
 	qemu-system-riscv64 -M virt -bios none -kernel pcie.bin \
-	    -device tulip,mac=52:54:00:12:34:56 \
+	    -netdev user,id=net0 \
+	    -device tulip,netdev=net0,mac=52:54:00:12:34:56 \
 	    -device edu \
 	    -display none -serial mon:stdio
 

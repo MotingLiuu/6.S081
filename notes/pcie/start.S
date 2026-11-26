@@ -2,6 +2,7 @@
     .globl _start
 _start:
     la      sp, _stack_top
+    /* a0=hartid, a1=FDT 地址由 QEMU 按 RISC-V 启动协议放好，直接传给 main */
     call    main
 1:
     wfi

@@ -13,6 +13,36 @@ xmake clean  # 清理
 需要 `xmake`、`riscv64-unknown-elf-gcc` 和 `qemu-system-riscv64`。
 仓库里还留了一份等价的 `Makefile`，`make && make run` 同样可用。
 
+## 选择实验
+
+默认运行全部 6 个实验；可以用命令行参数只跑自己关心的部分：
+
+```sh
+make run EXP=5        # 只跑实验 5（ARP 收发）
+make run EXP=4,5      # 跑实验 4 和 5
+make run EXP=1-3      # 跑实验 1、2、3
+make run EXP=none     # 只扫描 PCIe 设备，不跑实验
+make run              # 默认 EXP=all
+```
+
+xmake 的写法：
+
+```sh
+xmake run pcie 5
+xmake run pcie 4,5
+xmake run pcie all
+```
+
+不需要重新编译，`exp` 只是 QEMU 的启动参数。
+
+参数是怎么到裸机程序的：`make run` 给 QEMU 加了 `-append "exp=5"`，
+QEMU 把它放进设备树 `/chosen/bootargs`，并在启动时把 DTB 地址放在 `a1`。
+`main(uint64_t hartid, uint64_t fdt)` 里的 `cmdline_init(fdt)` 解析出
+`exp=`，`exp_enabled(n)` 决定每个实验跑不跑。没有 `-append` 时默认全部运行。
+
+只选实验 4 或 5 也没关系：程序会自动、静默地完成 BAR 分配和 bus master
+使能（实验 3 做的事），否则网卡无法访问。
+
 ---
 
 ## 一、先建立整体图像
@@ -343,6 +373,14 @@ BAR1 指向 128 字节的 CSR 窗口。每个 CSR 占 8 字节：
 
 ## 八、实验 5：一次真实的 ARP 往返
 
+只跑这个实验：
+
+```sh
+make run EXP=5
+# 或
+xmake run pcie 5
+```
+
 `demo_network()` 做的是：
 
 1. `tulip_init()`：软复位，建 4 条 TX + 4 条 RX 描述符，打开 SR/ST。
@@ -395,11 +433,12 @@ pcie/
 ├── xmake.lua       构建脚本（交叉编译器、链接脚本、objcopy、QEMU 启动）
 ├── Makefile        等价的 make 版本，二选一
 ├── linker.ld       链接脚本，代码放在 0x80000000
-├── start.S         入口、栈、M 模式陷阱入口
-├── main.c          六个实验的主流程
+├── start.S         入口、栈、M 模式陷阱入口；把 QEMU 的 a0/a1 传给 main
+├── main.c          六个实验的主流程 + 实验选择
+├── cmdline.c/.h    从设备树 /chosen/bootargs 解析 exp=...
 ├── console.c/.h    UART 输出 + 迷你 printf + hexdump
 ├── mmio.h          volatile 读写封装
-├── pci.c/.h        ECAM 访问、扫描、BAR 探测
+├── pci.c/.h        ECAM 访问、扫描、BAR 探测/分配
 ├── trap.c/.h       陷阱处理，用来安全地试读地址
 └── tulip.c/.h      Tulip 驱动：CSR、DMA 描述符环、发送/接收
 ```
@@ -409,6 +448,7 @@ pcie/
 实验 1-4 的输出（节选）：
 
 ```
+实验选择: all
 扫描完成：找到 3 个 PCIe 设备/功能
 
   [00:00.0] vendor=1b36 device=0008  bridge (class 06:00)
@@ -459,11 +499,16 @@ QEMU monitor 的 `info pci`，所有数字都能对上。
 ## 十二、常用命令
 
 ```sh
-# 完整运行（tulip 必须显式接网络后端，否则收不到 ARP 应答）
+# 只跑 ARP 实验；exp=all 跑全部，exp=4,5 跑多个
 qemu-system-riscv64 -M virt -bios none -kernel pcie.bin \
+    -append "exp=5" \
     -netdev user,id=net0 \
     -device tulip,netdev=net0,mac=52:54:00:12:34:56 \
     -device edu -display none -serial mon:stdio
+
+# make / xmake 包装好的写法
+make run EXP=5
+xmake run pcie 5
 
 # 看 QEMU 分配的真实 BAR 地址（需要 guest 自己没分配时显示 not mapped）
 echo "info pci" | qemu-system-riscv64 -M virt -device tulip -display none -serial none -monitor stdio

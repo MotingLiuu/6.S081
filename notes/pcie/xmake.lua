@@ -47,7 +47,8 @@ target("pcie")
     -- 链接脚本放进 add_files，xmake 会自动转成 -T linker.ld。
     -- 注意别再手动 add_ldflags("-T linker.ld")，否则传两次 ld 会报错。
     add_files("linker.ld")
-    add_files("start.S", "main.c", "console.c", "pci.c", "trap.c", "tulip.c")
+    add_files("start.S", "main.c", "console.c", "pci.c", "trap.c", "tulip.c",
+              "cmdline.c")
 
     -- 链接阶段同样要 -nostdlib，否则会去找 crt0.o 和 libc
     add_ldflags("-nostdlib", "-Wl,--build-id=none", {force = true})
@@ -64,11 +65,19 @@ target("pcie")
     end)
 
     on_run(function (target)
+        import("core.base.option")
         local bin = target:targetfile():gsub("%.elf$", ".bin")
+        -- xmake run pcie 5 / xmake run pcie 4,5 / xmake run pcie all
+        local runargs = option.get("arguments")
+        local exp = "all"
+        if runargs and #runargs > 0 then
+            exp = runargs[1]:gsub("^exp=", "")
+        end
         os.execv("qemu-system-riscv64", {
             "-M", "virt",
             "-bios", "none",
             "-kernel", bin,
+            "-append", "exp=" .. exp,
             "-netdev", "user,id=net0",
             "-device", "tulip,netdev=net0,mac=52:54:00:12:34:56",
             "-device", "edu",

@@ -4,7 +4,10 @@ CFLAGS  = -march=rv64gc -mabi=lp64 -mcmodel=medany \
           -ffreestanding -nostdlib -fno-builtin -fno-common \
           -Wall -Wextra -Wno-unused-parameter -g -O0 -MMD -MP
 
-OBJS = start.o main.o console.o pci.o trap.o tulip.o
+OBJS = start.o main.o console.o pci.o trap.o tulip.o cmdline.o
+
+# 选择要跑的实验，例如：make run EXP=5 / make run EXP=4,5 / make run EXP=all
+EXP ?= all
 
 all: pcie.bin
 
@@ -22,6 +25,7 @@ pcie.bin: pcie.elf
 
 run: pcie.bin
 	qemu-system-riscv64 -M virt -bios none -kernel pcie.bin \
+	    -append "exp=$(EXP)" \
 	    -netdev user,id=net0 \
 	    -device tulip,netdev=net0,mac=52:54:00:12:34:56 \
 	    -device edu \

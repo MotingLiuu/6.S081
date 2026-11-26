@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
+#include "cmdline.h"
 #include "console.h"
 #include "mmio.h"
 #include "pci.h"
@@ -118,74 +119,14 @@ static void demo_mmio_window(struct pci_device *devs, int n)
             (void *)PCI_MMIO_BASE, (void *)PCI_MMIO_END);
     kprintf("CPU 读写这个范围，PCIe 控制器会把访问转成 PCIe 事务发出去。\n\n");
 
-    uint64_t next = PCI_MMIO_BASE;
-
-    for (int i = 0; i < n; i++) {
-        struct pci_device *d = &devs[i];
-
-        for (int b = 0; b < 6; b++) {
-            uint32_t raw = d->bar[b];
-            uint64_t size = d->bar_size[b];
-
-            if (size == 0)
-                continue;
-            if (raw & 1) {
-                kprintf("  [%02x:%02x.%x] BAR%d 是 I/O BAR，本实验跳过\n",
-                        d->addr.bus, d->addr.dev, d->addr.func, b);
-                continue;
-            }
-
-            /* 地址必须按大小对齐 */
-            next = (next + size - 1) & ~(size - 1);
-            // note
-            // 对其到 size 的整数倍
-
-            /* 保留低 4 位标志，只替换地址部分 */
-            uint32_t value = (uint32_t)next | (raw & 0xf);
-            pci_write32(d->addr.bus, d->addr.dev, d->addr.func,
-                        PCI_BAR0 + b * 4, value);
-
-            /* 读回验证，确认设备真的记住了 */
-            uint32_t check = pci_read32(d->addr.bus, d->addr.dev,
-                                        d->addr.func, PCI_BAR0 + b * 4);
-
-            kprintf("  [%02x:%02x.%x] BAR%d: 分配 %p -> 读回 %08x  %s\n",
-                    d->addr.bus, d->addr.dev, d->addr.func, b,
-                    (void *)next, check, check == value ? "OK" : "失败");
-
-            d->bar_addr[b] = next;
-            next += size;
-        }
-    }
+    pci_assign_bars(devs, n, 1);
 
     /*
      * Command 寄存器 bit0/bit1 是地址译码开关。
      * 就算 BAR 里写了地址，不开这两位设备也不会应答。
      */
     kprintf("\n地址写进 BAR 还不够，还要打开 Command 寄存器的译码位：\n");
-    for (int i = 0; i < n; i++) {
-        struct pci_device *d = &devs[i];
-        if (d->vendor != 0x1011)
-            continue;
-
-        uint16_t cmd = pci_read16(d->addr.bus, d->addr.dev, d->addr.func,
-                                  PCI_COMMAND);
-        kprintf("  [%02x:%02x.%x] Command=%04x  I/O=%d  MMIO=%d  总线主控=%d\n",
-                d->addr.bus, d->addr.dev, d->addr.func, cmd,
-                !!(cmd & PCI_CMD_IO_SPACE), !!(cmd & PCI_CMD_MEM_SPACE),
-                !!(cmd & PCI_CMD_BUS_MASTER));
-
-        pci_write16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND,
-                    cmd | PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE |
-                        PCI_CMD_BUS_MASTER);
-        // note:
-        // IO_SPACE (1 << 0) 设备响应针对于其 I/O BAR 的访问
-        // Memory Space Enable 设备响应对于其 Memory BAR 的访问
-        // Bus Mater Enable 允许设备主动发起 PCI transaction, DMA etc
-
-        cmd = pci_read16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND);
-        kprintf("  写入后 Command=%04x，网卡从现在开始应答 MMIO 访问。\n", cmd);
-    }
+    pci_enable_decoding(devs, n, 1);
 }
 
 static void demo_tulip(struct pci_device *devs, int n)
@@ -312,10 +253,14 @@ static int build_arp_request(uint8_t *f)
 
     zero_bytes(f, 60);                  /* 以太网最短帧 60 字节（不含 FCS） */
 
+    // note
+    // Ethernet Header
     copy_bytes(f + 0, bcast, 6);        /* 目的：广播 */
     copy_bytes(f + 6, mac, 6);          /* 源：我们的 MAC */
     put_be16(f + 12, 0x0806);           /* EtherType: ARP */
 
+    // note
+    // ARP Packet
     put_be16(f + 14, 0x0001);           /* ARP htype: Ethernet */
     put_be16(f + 16, 0x0800);           /* ARP ptype: IPv4 */
     f[18] = 6;                          /* hlen */
@@ -349,7 +294,7 @@ static void demo_network(struct pci_device *devs, int n)
     }
 
     kprintf("Tulip 从外到内有三层：\n");
-    kprintf("  PCI 配置空间 -> BAR -> CSR 寄存器 -> 描述符环 -> 帧缓冲区\n\n");
+
     kprintf("控制路径（CPU 主动）：CSR3/CSR4 告诉网卡环在哪，\n");
     kprintf("                      CSR6 的 SR/ST 开收/发，CSR1 踢发送。\n");
     kprintf("数据路径（网卡主动）：网卡按描述符里的物理地址自己 DMA 读写，\n");
@@ -418,25 +363,48 @@ static void demo_negative(void)
     kprintf("\n对比：窗口外的地址会直接 fault，窗口内没人认领的地址读到全 1。\n");
 }
 
-void main(void)
+/*
+ * QEMU 按 RISC-V 启动协议把 hartid 放在 a0、设备树地址放在 a1。
+ * start.S 不动这两个寄存器，所以这里能直接收到它们。
+ */
+void main(uint64_t hartid, uint64_t fdt)
 {
     static struct pci_device devs[MAX_DEV];
+    int need_mmio;
 
+    (void)hartid;
     trap_init();
+    cmdline_init(fdt);
 
     kprintf("\n");
     kprintf("########## PCIe / 配置空间 / BAR 教学实验 ##########\n");
-    kprintf("QEMU -M virt + tulip 网卡\n\n");
+    kprintf("QEMU -M virt + tulip 网卡\n");
+    kprintf("实验选择: %s\n\n", cmdline_expr());
 
     int n = pci_scan(devs, MAX_DEV);
     kprintf("扫描完成：找到 %d 个 PCIe 设备/功能\n", n);
 
-    demo_config_space(devs, n);
-    demo_bar_probe(devs, n);
-    demo_mmio_window(devs, n);
-    demo_tulip(devs, n);
-    demo_network(devs, n);
-    demo_negative();
+    need_mmio = exp_enabled(3) || exp_enabled(4) || exp_enabled(5);
+
+    if (exp_enabled(1))
+        demo_config_space(devs, n);
+    if (exp_enabled(2))
+        demo_bar_probe(devs, n);
+
+    if (exp_enabled(3)) {
+        demo_mmio_window(devs, n);
+    } else if (need_mmio) {
+        /* 实验 4/5 需要 BAR 和 bus master，即使没选实验 3 也要静默完成 */
+        pci_assign_bars(devs, n, 0);
+        pci_enable_decoding(devs, n, 0);
+    }
+
+    if (exp_enabled(4))
+        demo_tulip(devs, n);
+    if (exp_enabled(5))
+        demo_network(devs, n);
+    if (exp_enabled(6))
+        demo_negative();
 
     kprintf("\n########## 实验结束 ##########\n");
     kprintf("在 run 模式下按 Ctrl-A X 退出 QEMU\n");

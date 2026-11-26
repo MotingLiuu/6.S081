@@ -63,4 +63,16 @@ void pci_read_header(struct pci_device *d);
 void pci_probe_bars(struct pci_device *d);
 int  pci_scan(struct pci_device *out, int max);
 
+/*
+ * 把设备的 MEM BAR 分配到 PCIe MMIO 窗口，并把分配结果记在
+ * pci_device.bar_addr[] 里。verbose=1 时打印分配过程。
+ */
+void pci_assign_bars(struct pci_device *devs, int n, int verbose);
+
+/*
+ * 打开设备的 I/O、MMIO 地址译码和 bus master（允许发起 DMA）。
+ * 只对 Tulip（vendor 0x1011）操作；verbose=1 时打印 Command 寄存器。
+ */
+void pci_enable_decoding(struct pci_device *devs, int n, int verbose);
+
 #endif

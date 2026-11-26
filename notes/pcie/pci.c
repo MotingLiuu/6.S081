@@ -193,3 +193,79 @@ int pci_scan(struct pci_device *out, int max)
             }
     return n;
 }
+
+void pci_assign_bars(struct pci_device *devs, int n, int verbose)
+{
+    uint64_t next = PCI_MMIO_BASE;
+
+    for (int i = 0; i < n; i++) {
+        struct pci_device *d = &devs[i];
+
+        for (int b = 0; b < 6; b++) {
+            uint32_t raw = d->bar[b];
+            uint64_t size = d->bar_size[b];
+
+            if (size == 0)
+                continue;
+            if (raw & 1) {
+                if (verbose)
+                    kprintf("  [%02x:%02x.%x] BAR%d 是 I/O BAR，本实验跳过\n",
+                            d->addr.bus, d->addr.dev, d->addr.func, b);
+                continue;
+            }
+
+            /* 地址必须按大小对齐 */
+            next = (next + size - 1) & ~(size - 1);
+
+            /* 保留低 4 位标志，只替换地址部分 */
+            uint32_t value = (uint32_t)next | (raw & 0xf);
+            pci_write32(d->addr.bus, d->addr.dev, d->addr.func,
+                        PCI_BAR0 + b * 4, value);
+
+            /* 读回验证，确认设备真的记住了 */
+            uint32_t check = pci_read32(d->addr.bus, d->addr.dev,
+                                        d->addr.func, PCI_BAR0 + b * 4);
+
+            if (verbose)
+                kprintf("  [%02x:%02x.%x] BAR%d: 分配 %p -> 读回 %08x  %s\n",
+                        d->addr.bus, d->addr.dev, d->addr.func, b,
+                        (void *)next, check, check == value ? "OK" : "失败");
+
+            d->bar_addr[b] = next;
+            next += size;
+        }
+    }
+}
+
+void pci_enable_decoding(struct pci_device *devs, int n, int verbose)
+{
+    for (int i = 0; i < n; i++) {
+        struct pci_device *d = &devs[i];
+        uint16_t cmd;
+
+        if (d->vendor != 0x1011)
+            continue;
+
+        cmd = pci_read16(d->addr.bus, d->addr.dev, d->addr.func,
+                         PCI_COMMAND);
+        if (verbose)
+            kprintf("  [%02x:%02x.%x] Command=%04x  I/O=%d  MMIO=%d  总线主控=%d\n",
+                    d->addr.bus, d->addr.dev, d->addr.func, cmd,
+                    !!(cmd & PCI_CMD_IO_SPACE), !!(cmd & PCI_CMD_MEM_SPACE),
+                    !!(cmd & PCI_CMD_BUS_MASTER));
+
+        /*
+         * bit0: 设备响应 I/O BAR 的访问
+         * bit1: 设备响应 Memory BAR 的访问
+         * bit2: 允许设备主动发起 PCI transaction（DMA）
+         */
+        pci_write16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND,
+                    cmd | PCI_CMD_IO_SPACE | PCI_CMD_MEM_SPACE |
+                        PCI_CMD_BUS_MASTER);
+
+        cmd = pci_read16(d->addr.bus, d->addr.dev, d->addr.func, PCI_COMMAND);
+        if (verbose)
+            kprintf("  写入后 Command=%04x，网卡从现在开始应答 MMIO 访问。\n",
+                    cmd);
+    }
+}
